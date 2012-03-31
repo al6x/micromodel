@@ -1,0 +1,1 @@
+# Model that can be used on both Client & Server

@@ -1,6 +1,11 @@
 require './helper'
 Model = require '../passive-model'
-CModel = Model.ConversableModel
+_     = require 'underscore'
+
+# Adding conversion Mixin to Model.
+class CModel extends Model
+_(CModel).extend Model.Conversion
+_(CModel.prototype).extend Model.Conversion.prototype
 
 describe 'Attribute Conversion', ->
   it "should update only typed attribytes", ->

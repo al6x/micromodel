@@ -54,8 +54,14 @@ definePropertyWithoutEnumeration Model.Errors.prototype, 'add', (args...) ->
     @[attr].push message
 
 # Support for conversions.
-
-class ConversableModel extends Model
+#
+# Use following code to add it to Your model:
+#
+#     class MyModel extends Model
+#     _(MyModel).extend Model.Conversion
+#     _(MyModel.prototype).extend Model.Conversion.prototype
+#
+class Conversion
 
   # Attribute Conversion.
 
@@ -66,7 +72,7 @@ class ConversableModel extends Model
       [attr, type] = args
       setterName = "set#{attr[0..0].toUpperCase()}#{attr[1..attr.length]}WithCasting"
       @prototype[setterName] = (v) ->
-        v = if type then ConversableModel._cast(v, type) else v
+        v = if type then Conversion._cast(v, type) else v
         @[attr] = v
 
   set: (attributes = {}, options = {}) ->
@@ -100,12 +106,12 @@ class ConversableModel extends Model
           r = obj.toHash()
         if obj.toArray
           r = obj.toArray()
-        else if ConversableModel._isArray obj
+        else if Conversion._isArray obj
           r = []
           for v in obj
             v = if v.toHash then v.toHash() else v
             r.push v
-        else if ConversableModel._isObject obj
+        else if Conversion._isObject obj
           r = {}
           for own k, v of obj
             v = if v.toHash then v.toHash() else v
@@ -143,12 +149,12 @@ class ConversableModel extends Model
       if o = hash[k]
         if o._class
           r = that.fromHash o, obj
-        else if ConversableModel._isArray o
+        else if Conversion._isArray o
           r = []
           for v in o
             v = if v._class then that.fromHash(v, obj) else v
             r.push v
-        else if ConversableModel._isObject o
+        else if Conversion._isObject o
           r = {}
           for own k, v of o
             v = if v._class then that.fromHash(v, obj) else v
@@ -207,7 +213,7 @@ class ConversableModel extends Model
     casted
 
 # Universal exports `module.exports`.
-Model.ConversableModel = ConversableModel
+Model.Conversion = Conversion
 if module?
   module.exports = Model
 else

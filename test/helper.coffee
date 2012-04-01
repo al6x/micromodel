@@ -8,5 +8,5 @@ beforeEach ->
   global.Tmp = {}
 
 # Stubbing class loading.
-Model.ConversableModel.getClass = (name) ->
+Model.Conversion.getClass = (name) ->
   Tmp[name] || (throw new Error "can't get '#{name}' class!")

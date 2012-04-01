@@ -1,4 +1,5 @@
 require './helper'
+Model = require '../passive-model'
 
 describe "Model", ->
   it "should check for equality based on model attributes", ->
@@ -29,6 +30,12 @@ describe "Model", ->
     u = new Tmp.User()
     u.set name: 'Alex', hasMail: 'true', age: '31', banned: 'false'
     expect([u.name, u.hasMail, u.age, u.banned]).to.eql ['Alex', 'true', '31', 'false']
+
+  it "should return attributes", ->
+    class Unit extends Model
+
+    unit = new Unit name: 'Probe', _cache: {}
+    expect(unit.attributes()).to.eql name: 'Probe'
 
   it "should provide helper for adding errors", ->
     class Unit extends Model

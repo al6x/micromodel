@@ -84,13 +84,13 @@ describe "Model Conversion", ->
     }
 
     # Converting to Hash.
-    expect(post.toHash()).to.eql hash
+    expect(post.toHash(errors: false, class: true)).to.eql hash
 
     [post.id, hash.id] = ['some id', 'some id']
-    expect(post.toHash()).to.eql hash
+    expect(post.toHash(errors: false, class: true)).to.eql hash
 
-    # Converting from mongo.
-    expect(CModel.fromHash(hash).toHash()).to.eql hash
+    # Converting from Hash.
+    expect(CModel.fromHash(hash).toHash(errors: false, class: true)).to.eql hash
 
   it "should update model from hash", ->
     class Tmp.Post extends CModel

@@ -1,13 +1,14 @@
 # If it's Browser, making it looks like "standard" JS.
 global ?= window
-util = require?('util') || {inspect: (data) -> JSON.stringify(data)}
+try
+  util = require 'util'
+catch error
+  util = {inspect: (data) -> JSON.stringify(data)}
 
 _ = global._ || require 'underscore'
 
 # Basic Model.
 class Model
-  isModel: true
-
   constructor: (attributes) ->
     @set @defaults if @defaults
     @set attributes if attributes
@@ -90,53 +91,52 @@ class Conversion
   @_children: []
   @children: (args...) -> @_children = @_children.concat args
 
-  getId: -> @id
-
-  setId: (id) -> @id = id
-
-  toHash: ->
+  toHash: (options = {errors: true}) ->
     # Converting Attributes.
     hash = @attributes()
+    hash.errors = @errors if options.errors
 
     # Converting children objects.
     that = @
     for k in @constructor._children
       if obj = that[k]
         if obj.toHash
-          r = obj.toHash()
+          r = obj.toHash options
         if obj.toArray
           r = obj.toArray()
         else if Conversion._isArray obj
           r = []
           for v in obj
-            v = if v.toHash then v.toHash() else v
+            v = if v.toHash then v.toHash(options) else v
             r.push v
         else if Conversion._isObject obj
           r = {}
           for own k, v of obj
-            v = if v.toHash then v.toHash() else v
+            v = if v.toHash then v.toHash(options) else v
             r[k] = v
         hash[k] = r
 
     # Adding class.
-    hash._class = @constructor.name ||
-      throw new Error "no constructor name for #{util.inspect(@)}!"
+    if options.class
+      hash._class = @constructor.name ||
+        throw new Error "no constructor name for #{util.inspect(@)}!"
 
     hash
 
   # Updates state from Hash.
   fromHash: (hash) ->
-    model = @constructor.fromHash hash, @
+    model = @constructor.fromHash hash, @constructor.name
     _(@).extend(model.attributes?() || model)
     @errors = model.errors
     @
 
   # Creates new model from Hash.
-  @fromHash: (hash) ->
-    return hash unless hash._class
+  @fromHash: (hash, klass) ->
+    klass ?= hash._class
+    return hash unless klass
 
     # Creating object.
-    klass = @getClass hash._class
+    klass = @getClass klass
     obj = new klass()
 
     # Restoring attributes.
@@ -148,21 +148,18 @@ class Conversion
     for k in klass._children
       if o = hash[k]
         if o._class
-          r = that.fromHash o, obj
+          r = that.fromHash o
         else if Conversion._isArray o
           r = []
           for v in o
-            v = if v._class then that.fromHash(v, obj) else v
+            v = if v._class then that.fromHash(v) else v
             r.push v
         else if Conversion._isObject o
           r = {}
           for own k, v of o
-            v = if v._class then that.fromHash(v, obj) else v
+            v = if v._class then that.fromHash(v) else v
             r[k] = v
       obj[k] = r
-
-    # If it's nested object also setting its parent.
-    # obj._parent = parent if parent
 
     # Allow custom processing to be added.
     klass.afterFromHash? obj, hash
@@ -211,6 +208,23 @@ class Conversion
 
     throw new Error "can't cast, invalid value (#{util.inspect v})!" unless casted?
     casted
+
+# Integration with JSON.
+# Conversion.prototype.toJSON = Conversion.prototype.toHash
+
+# Integration with mongo-lite & rest-lite.
+_(Conversion.prototype).extend
+  isModel  : true
+  getId    : -> @id
+  setId    : (id) -> @id = id
+  addError : (args...) -> @errors.add args...
+  toMongo  : -> @toHash errors: false, class: true
+  fromRest : Conversion.prototype.fromHash
+  toRest   : -> @toHash errors: false, class: false
+
+_(Conversion).extend
+  fromMongo : Conversion.fromHash
+  fromRest  : Conversion.fromHash
 
 # Universal exports `module.exports`.
 Model.Conversion = Conversion

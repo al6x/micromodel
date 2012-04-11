@@ -254,9 +254,8 @@ class Model.Collection
 
     # Adding.
     for model in models
-      id = model.id || throw new Error "can't add model without id to collection!"
       @models.push model
-      @ids[id] = model
+      @ids[model.id] = model unless _.isEmpty(model.id)
     @length = @models.length
 
     # Sorting.
@@ -279,12 +278,19 @@ class Model.Collection
     # Deleting
     deleted = []
     for model in models
-      id = model.id || throw new Error "can't delete model without id from collection!"
-      if id of @ids
-        deleted.push model
-        delete @ids[id]
-        index = @models.indexOf model
-        @models.splice index, 1
+      id = model.id
+      unless _.isEmpty id
+        if id of @ids
+          deleted.push model
+          delete @ids[id]
+          index = @models.indexOf model
+          @models.splice index, 1
+      else
+        for m, index in @models when model.eq m
+          deleted.push m
+          delete @ids[m.id]
+          @models.splice index, 1
+
     @length = @models.length
 
     # Notifying

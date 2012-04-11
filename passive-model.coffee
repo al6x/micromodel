@@ -128,8 +128,8 @@ class Conversion
       if obj = that[k]
         if obj.toHash
           r = obj.toHash options
-        if obj.toArray
-          r = obj.toArray()
+        # if obj.toArray
+        #   r = obj.toArray()
         else if Conversion._isArray obj
           r = []
           for v in obj
@@ -140,6 +140,8 @@ class Conversion
           for own k, v of obj
             v = if v.toHash then v.toHash(options) else v
             r[k] = v
+        else
+          r = obj
         hash[k] = r
 
     # Adding class.
@@ -151,7 +153,7 @@ class Conversion
 
   # Updates state from Hash.
   fromHash: (hash) ->
-    model = @constructor.fromHash hash, @constructor.name
+    model = Conversion.fromHash hash, @constructor
     attributes = model.attributes?() || model
     @set attributes
     @errors = model.errors
@@ -159,11 +161,7 @@ class Conversion
 
   # Creates new model from Hash.
   @fromHash: (hash, klass) ->
-    klass ?= hash._class
-    return hash unless klass
-
     # Creating object.
-    klass = @getClass klass
     obj = new klass()
 
     # Restoring attributes.
@@ -171,25 +169,29 @@ class Conversion
     delete obj._class
 
     # Restoring children.
-    that = @
-    for k in klass._children
+    for k in (klass._children || [])
       if o = hash[k]
         if o._class
-          r = that.fromHash o
+          klass = Conversion.getClass o._class
+          r = Conversion.fromHash o, klass
         else if Conversion._isArray o
           r = []
           for v in o
-            v = if v._class then that.fromHash(v) else v
+            if v._class
+              klass = Conversion.getClass v._class
+              v = Conversion.fromHash v, klass
             r.push v
         else if Conversion._isObject o
           r = {}
           for own k, v of o
-            v = if v._class then that.fromHash(v) else v
+            if v._class
+              klass = Conversion.getClass v._class
+              v = Conversion.fromHash v, klass
             r[k] = v
       obj[k] = r
 
     # Allow custom processing to be added.
-    klass.afterFromHash? obj, hash
+    # klass.afterFromHash? obj, hash
 
     obj
 
@@ -319,8 +321,8 @@ class Model.Collection
 # Validations.
 class Model.Validations
   validatesPresenceOf: (attrs...) ->
-    for attr in attrs
-      @errors.add attr, "can't be blank" if _.isEmpty @[attr]
+    for attr in attrs when _.isEmpty(@[attr]) and !_.isNumber(@[attr])
+      @errors.add attr, "can't be blank"
 
 # Integration with JSON.
 # Conversion.prototype.toJSON = Conversion.prototype.toHash
@@ -336,8 +338,21 @@ _(Conversion.prototype).extend
   toRest   : -> @toHash errors: false, class: false
 
 _(Conversion).extend
-  fromMongo : Conversion.fromHash
-  fromRest  : Conversion.fromHash
+  fromMongo : (doc, collection) ->
+    className = collection.options.class || doc._class
+    if className
+      klass = Conversion.getClass className
+      Conversion.fromHash doc, klass
+    else
+      doc
+
+  fromRest  : (doc, resource) ->
+    className = resource.options.class || doc._class
+    if className
+      klass = Conversion.getClass className
+      Conversion.fromHash doc, klass
+    else
+      doc
 
 # Universal exports `module.exports`.
 Model.Conversion = Conversion

@@ -47,7 +47,7 @@ describe 'Attribute Conversion', ->
     expect(CModel._cast('2011-08-23', Date)).to.eql (new Date('2011-08-23'))
 
 describe "Model Conversion", ->
-  it "should convert object to and from hash & array", ->
+  it "should convert object to and from hash", ->
     class Tmp.Post extends CModel
       @children 'tags', 'comments'
 
@@ -56,19 +56,20 @@ describe "Model Conversion", ->
     # Should aslo allow to use models that
     # are saved to array.
     # To do so we need to use toArray and afterFromHash.
-    class Tmp.Tags extends CModel
-      constructor: -> @array = []
-      push: (args...) -> @array.push args...
-      toArray: -> @array
-    Tmp.Post.afterFromHash = (obj, hash) ->
-      obj.tags = new Tmp.Tags
-      obj.tags.array = hash.tags
+    # class Tmp.Tags extends CModel
+    #   constructor: -> @array = []
+    #   push: (args...) -> @array.push args...
+    #   toArray: -> @array
+    # Tmp.Post.afterFromHash = (obj, hash) ->
+    #   obj.tags = new Tmp.Tags
+    #   obj.tags.array = hash.tags
 
     # Creating some data.
     comment = new Tmp.Comment()
     comment.text = 'Some text'
 
-    tags = new Tmp.Tags()
+    # tags = new Tmp.Tags()
+    tags = []
     tags.push 'a', 'b'
 
     post = new Tmp.Post()
@@ -90,7 +91,8 @@ describe "Model Conversion", ->
     expect(post.toHash(errors: false, class: true)).to.eql hash
 
     # Converting from Hash.
-    expect(CModel.fromHash(hash).toHash(errors: false, class: true)).to.eql hash
+    klass = Model.Conversion.getClass hash._class
+    expect(CModel.Conversion.fromHash(hash, klass).toHash(errors: false, class: true)).to.eql hash
 
   it "should update model from hash", ->
     class Tmp.Post extends CModel

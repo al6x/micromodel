@@ -7,6 +7,7 @@
     "underscore" : "1.3.x"
   },
   "devDependencies": {
+    "backbon"       : "0.9.x",
     "coffee-script" : "1.2.x",
     "mocha"         : "1.0.x",
     "expect.js"     : "0.1.x"

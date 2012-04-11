@@ -45,3 +45,21 @@ describe "Model", ->
     expect(unit.errors).to.eql {name: ["can't be blank"]}
     unit.errors.clear()
     expect(unit.errors).to.eql {}
+
+  it "should track attribute changes", ->
+    class Unit extends Model
+
+    unit = new Unit()
+    expect(unit.changed).to.eql {}
+    unit.set name: 'Probe'
+    expect(unit.changed).to.eql {name: undefined}
+    unit.set name: 'SCV'
+    expect(unit.changed).to.eql {name: 'Probe'}
+
+  it "should not track the same value as attribute change", ->
+    class Unit extends Model
+
+    unit = new Unit()
+    unit.set name: 'Probe', state: 'alive'
+    unit.set name: 'Probe', state: 'dead'
+    expect(unit.changed).to.eql {state: 'alive'}

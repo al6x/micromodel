@@ -11,18 +11,47 @@ _ = global._ || require 'underscore'
 class Model
   constructor: (attributes) ->
     @set @defaults if @defaults
-    @set attributes if attributes
     @errors = new Model.Errors()
+    @set attributes if attributes
+    @changed = {}
 
   eq: (other) -> _.isEqual @, other
 
   set: (attributes = {}, options = {}) ->
-    @[k] = v for own k, v of attributes
+    # Casting attributes.
+    if options.cast
+      unless @castAttributes
+        throw new Error "you need to include PassiveModel.Conversion to be able to use casting!"
+      attributes = @castAttributes attributes
+
+    # Updating attributes & tracking changes.
+    @changed = {}
+    for own k, v of attributes
+      @changed[k] = @[k] unless _.isEqual @[k], v
+      @[k] = v
+
+    # Notifying observers if Events module enabled.
+    if @trigger? and !_.isEmpty(@changed) and (options.silent != true)
+      for k, v of @changed
+        event = "change:#{k}"
+        @trigger event, event, @
+      @trigger "change", 'change', @
+
     @
 
   clear: -> delete @[k] for own k, v of @
 
-  valid: -> _(@errors).size() == 0
+  valid: (options) ->
+    oldErrors = @errors
+    @errors = new Model.Errors()
+    @validate()
+    newErrors = @errors
+    @errors = oldErrors
+    @set errors: newErrors, options
+    _(@errors).size() == 0
+
+  # Provide Your own.
+  validate: ->
 
   invalid: -> !@valid()
 
@@ -30,6 +59,7 @@ class Model
     attrs = {}
     attrs[k] = v for own k, v of @ when not /^_/.test k
     delete attrs.errors
+    delete attrs.changed
     attrs
 
 # Errors.
@@ -71,20 +101,16 @@ class Conversion
       @cast attr, type for own attr, type of args[0]
     else
       [attr, type] = args
-      setterName = "set#{attr[0..0].toUpperCase()}#{attr[1..attr.length]}WithCasting"
-      @prototype[setterName] = (v) ->
-        v = if type then Conversion._cast(v, type) else v
-        @[attr] = v
+      caster = "cast#{attr[0..0].toUpperCase()}#{attr[1..attr.length]}"
+      @prototype[caster] = (v) ->
+        if type then Conversion._cast(v, type) else v
 
-  set: (attributes = {}, options = {}) ->
-    if options.cast then @setWithCasting(attributes) else _(@).extend(attributes)
-    @
-
-  setWithCasting: (attributes = {}) ->
+  castAttributes: (attributes = {}) ->
+    casted = {}
     for own k, v of attributes
-      setterName = "set#{k[0..0].toUpperCase()}#{k[1..k.length]}WithCasting"
-      @[setterName] v if setterName of @
-    @
+      caster = "cast#{k[0..0].toUpperCase()}#{k[1..k.length]}"
+      casted[k] = @[caster] v if caster of @
+    casted
 
   # Model Conversion.
 
@@ -126,7 +152,8 @@ class Conversion
   # Updates state from Hash.
   fromHash: (hash) ->
     model = @constructor.fromHash hash, @constructor.name
-    _(@).extend(model.attributes?() || model)
+    attributes = model.attributes?() || model
+    @set attributes
     @errors = model.errors
     @
 
@@ -208,6 +235,86 @@ class Conversion
 
     throw new Error "can't cast, invalid value (#{util.inspect v})!" unless casted?
     casted
+
+# Collection.
+class Model.Collection
+  constructor: (models, options = {}) ->
+    [@models, @length, @ids] = [[], 0, {}]
+    @comparator = options.comparator
+    @add models if models
+
+  sort: (options) ->
+
+  add: (args...) ->
+    if args.length == 1 and _.isArray(args[0])
+      [models, options] = [args[0], {}]
+    else
+      options = unless args[args.length - 1]?.isModel then args.pop() else {}
+      models = args
+
+    # Adding.
+    for model in models
+      id = model.id || throw new Error "can't add model without id to collection!"
+      @models.push model
+      @ids[id] = model
+    @length = @models.length
+
+    # Sorting.
+    @sort silent: true
+
+    # Notifying
+    if @trigger and (options.silent != true)
+      @trigger 'add', model, @ for model in models
+      @trigger 'change', @
+
+    @
+
+  delete: (args...) ->
+    if args.length == 1 and _.isArray(args[0])
+      [models, options] = [args[0], {}]
+    else
+      options = unless args[args.length - 1]?.isModel then args.pop() else {}
+      models = args
+
+    # Deleting
+    deleted = []
+    for model in models
+      id = model.id || throw new Error "can't delete model without id from collection!"
+      if id of @ids
+        deleted.push model
+        delete @ids[id]
+        index = @models.indexOf model
+        @models.splice index, 1
+    @length = @models.length
+
+    # Notifying
+    if @trigger and (options.silent != true) and (deleted.length > 0)
+      @trigger 'delete', model, @ for model in deleted
+      @trigger 'change', @
+
+    @
+
+  get: (id) -> @ids[id]
+
+  at: (index) -> @models[index]
+
+  clear: (options = {}) ->
+    # Deleting
+    deleted = @models
+    [@models, @length, @ids] = [[], 0, {}]
+
+    # Notifying
+    if @trigger and (options.silent != true) and (deleted.length > 0)
+      @trigger 'delete', model, @ for model in deleted
+      @trigger 'change', @
+
+    @
+
+# Validations.
+class Model.Validations
+  validatesPresenceOf: (attrs...) ->
+    for attr in attrs
+      @errors.add attr, "can't be blank" if _.isEmpty @[attr]
 
 # Integration with JSON.
 # Conversion.prototype.toJSON = Conversion.prototype.toHash

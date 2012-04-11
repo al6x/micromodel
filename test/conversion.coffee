@@ -2,7 +2,7 @@ require './helper'
 Model = require '../passive-model'
 _     = require 'underscore'
 
-# Adding conversion Mixin to Model.
+# Adding conversion mixin to Model.
 class CModel extends Model
 _(CModel).extend Model.Conversion
 _(CModel.prototype).extend Model.Conversion.prototype

@@ -1,5 +1,5 @@
 require './helper'
-Model    = require '../passive-model'
+Model    = require '../lib/passive-model'
 _        = require 'underscore'
 Backbone = require 'backbone'
 

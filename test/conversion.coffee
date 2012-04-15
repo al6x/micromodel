@@ -1,15 +1,10 @@
 require './helper'
-Model = require '../passive-model'
+Model = require '../lib/passive-model'
 _     = require 'underscore'
 
-# Adding conversion mixin to Model.
-class CModel extends Model
-_(CModel).extend Model.Conversion
-_(CModel.prototype).extend Model.Conversion.prototype
-
-describe 'Attribute Conversion', ->
+describe 'Attribute Types', ->
   it "should update only typed attribytes", ->
-    class Tmp.User extends CModel
+    class Tmp.User extends Model
       @cast
         name    : String
         hasMail : Boolean
@@ -24,7 +19,7 @@ describe 'Attribute Conversion', ->
     expect(u.unknown).to.be undefined
 
   it "should inherit attribute types", ->
-    class Tmp.User extends CModel
+    class Tmp.User extends Model
       @cast age: Number
 
     class Tmp.Writer extends Tmp.User
@@ -42,21 +37,21 @@ describe 'Attribute Conversion', ->
     ]
     for cse in cases
       [type, raw, expected] = cse
-      expect(CModel._cast(raw, type)).to.eql expected
+      expect(Model._cast(raw, type)).to.eql expected
 
-    expect(CModel._cast('2011-08-23', Date)).to.eql (new Date('2011-08-23'))
+    expect(Model._cast('2011-08-23', Date)).to.eql (new Date('2011-08-23'))
 
-describe "Model Conversion", ->
+describe "Model Conversions", ->
   it "should convert object to and from hash", ->
-    class Tmp.Post extends CModel
+    class Tmp.Post extends Model
       @children 'tags', 'comments'
 
-    class Tmp.Comment extends CModel
+    class Tmp.Comment extends Model
 
     # Should aslo allow to use models that
     # are saved to array.
     # To do so we need to use toArray and afterFromHash.
-    # class Tmp.Tags extends CModel
+    # class Tmp.Tags extends Model
     #   constructor: -> @array = []
     #   push: (args...) -> @array.push args...
     #   toArray: -> @array
@@ -78,9 +73,9 @@ describe "Model Conversion", ->
     post.tags = tags
 
     hash = {
-      _class   : 'Post',
+      class   : 'Post',
       title    : 'Some title',
-      comments : [{text: 'Some text', _class: 'Comment'}],
+      comments : [{text: 'Some text', class: 'Comment'}],
       tags     : ['a', 'b']
     }
 
@@ -91,20 +86,20 @@ describe "Model Conversion", ->
     expect(post.toHash(errors: false, class: true)).to.eql hash
 
     # Converting from Hash.
-    klass = Model.Conversion.getClass hash._class
-    expect(CModel.Conversion.fromHash(hash, klass).toHash(errors: false, class: true)).to.eql hash
+    klass = Model.getClass hash.class
+    expect(Model.fromHash(hash, klass).toHash(errors: false, class: true)).to.eql hash
 
   it "should update model from hash", ->
-    class Tmp.Post extends CModel
+    class Tmp.Post extends Model
 
     post = new Tmp.Post title: 'Some title'
     post.fromHash title: 'Another title'
     expect(post.title).to.be 'Another title'
 
   # it "chldren should have `_parent` reference to the main object", ->
-  #   class Tmp.Unit extends CModel
+  #   class Tmp.Unit extends Model
   #     @children 'items'
-  #   class Tmp.Item extends CModel
+  #   class Tmp.Item extends Model
   #
   #   unit = new Tmp.Unit()
   #   unit.items = [
@@ -113,6 +108,6 @@ describe "Model Conversion", ->
   #   ]
   #
   #   hash = unit.toHash()
-  #   unit = CModel.fromHash(hash)
+  #   unit = Model.fromHash(hash)
   #   expect(unit._parent).to.be undefined
   #   expect(unit.items[0]._parent).to.eql unit

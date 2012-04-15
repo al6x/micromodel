@@ -1,5 +1,5 @@
 require './helper'
-Model = require '../passive-model'
+Model = require '../lib/passive-model'
 
 describe "Model", ->
   it "should check for equality based on model attributes", ->

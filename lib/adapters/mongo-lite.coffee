@@ -4,10 +4,9 @@ mongo = require 'mongo-lite'
 Model = require '../passive-model'
 
 # Extending Passive Model.
-
 _(Model.prototype).extend
   # Convert model to mongo hash.
-  toMongo  : -> @toHash except: ['errors']
+  toMongo: -> @toHash except: ['errors']
 
 _(Model).extend
   # Restores model from mongo hash.

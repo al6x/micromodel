@@ -7,55 +7,55 @@ catch error
 
 _ = global._ || require 'underscore'
 
-# # Model 
-# 
+# # Model
+#
 # Model for representing Business Data & Logic.
-# 
-# Attributes stored as properties You can get it as `model.name` but You should set it only via `set` method, 
-# like `model.set name: 'foo'`. 
-# Atributes starting with `_` prefix are ignored, You can use it for temporarry things like 
+#
+# Attributes stored as properties You can get it as `model.name` but You should set it only via `set` method,
+# like `model.set name: 'foo'`.
+# Atributes starting with `_` prefix are ignored, You can use it for temporarry things like
 # caching `_cache`.
-# 
-# By default model has no schema or attribute types, but You can define attribute types if You need it, 
+#
+# By default model has no schema or attribute types, but You can define attribute types if You need it,
 # see `cast` method.
-# 
-# It has three special properties `id`, `errors` - containing current errors 
+#
+# It has three special properties `id`, `errors` - containing current errors
 # and `changed` - containing attributes changed from last `set` operation.
-# 
+#
 # You can define validation rules in `validate` method and run validation validity of model by
 # using `valid` method.
-# 
-# Model can be used on both Client and Server with differrent persistency providers, see `mongo-lite` 
-# and `rest-lite` adapters. You can also serialize model to and from hash by using `toHash` 
+#
+# Model can be used on both Client and Server with differrent persistency providers, see `mongo-lite`
+# and `rest-lite` adapters. You can also serialize model to and from hash by using `toHash`
 # and 'fromHash` methods.
-# 
+#
 # If You need notifications (for example to use it with Backbone framework) it can be integrated with
 # Backbone.Events module, and will trigger `change` and `change:attr` events.
-# 
+#
 # Use `_(Model.prototype).extend Backbone.Events` to integrate it with `Backbone.Events`.
 class Model
   # You can initialize model with `attributes`, arguments are the same as for `set` method.
   # You can also define the `defaults` property on the model with default attribute values.
   constructor: (attributes, options) ->
-    @set @defaults, options if @defaults    
+    @set @defaults, options if @defaults
     @set attributes if attributes
     @errors = new Model.Errors()
-    @changed = {}    
+    @changed = {}
 
   # Check for equality based on the content of objects, deep.
   eq: (other) -> _.isEqual @, other
-  
+
   # Set attributes of model, if the attribute is the same it will be ignored, list
   # of changed attributes will be available in `changed` variable.
-  # 
+  #
   # If model implements `trigger` method (for example by extending Backbone.Events module) the
-  # following events will be triggered (except if new value of attribute is equal to old in that case 
+  # following events will be triggered (except if new value of attribute is equal to old in that case
   # no event will be triggered): `change:attr` for every changed attribute and`change`.
-  # 
-  # - if `cast` option provided it will set only attributes that explicitly defined in 
+  #
+  # - if `cast` option provided it will set only attributes that explicitly defined in
   # schema (see `cast` method) and ignore others, You may use it as a vay to safe update attributes.
   # - if `silent` option provided no event will be triggered.
-  # 
+  #
   set: (attributes, options) ->
     attributes ?= {}
     options ?= {}
@@ -79,16 +79,16 @@ class Model
     @
 
   # Clear model.
-  clear: -> 
+  clear: ->
     delete @[k] for own k, v of @
     @errors = new Model.Errors()
     @changed = {}
     @
 
-  # Check model for validity using `validate` method, if there will be errors - they will be saved in 
-  # `errors` property. If model implements `trigger` method `change:errors` & `change` events will 
+  # Check model for validity using `validate` method, if there will be errors - they will be saved in
+  # `errors` property. If model implements `trigger` method `change:errors` & `change` events will
   # be trigerred.
-  # 
+  #
   # Model is valid when `errors` property is empty.
   valid: (options) ->
     oldErrors = @errors
@@ -98,7 +98,7 @@ class Model
     @errors = oldErrors
     @set errors: newErrors, options
     _(@errors).size() == 0
-    
+
   invalid: -> !@valid()
 
   # Define validation rules and store errors in `errors` property `@errors.add name: "can't be blank"`.
@@ -122,14 +122,14 @@ definePropertyWithoutEnumeration = (obj, name, value) ->
       value: value
 
 # # Errors
-# 
+#
 # Error messages stored in `errors` property of model in arbitrary format, but usually its strucrue
 # looks like this:
-# 
+#
 #   errors:
 #     name   : ["can't be blank"]
 #     accept : ['must be accepted']
-# 
+#
 # in order to easy working with errors we adding helper methods `add` and `clear`.
 class Model.Errors
 
@@ -148,7 +148,7 @@ definePropertyWithoutEnumeration Model.Errors.prototype, 'add', (args...) ->
     @[attr].push message
 
 # # Conversions.
-# 
+#
 # Convert model to and from Hash, also supports child models.
 
 # Helpers for checking if object is Array or Object.
@@ -159,16 +159,16 @@ _isObject = (obj) -> Object.prototype.toString.call(obj) == "[object Object]"
 _(Model.prototype).extend
   # Marker to easy distinguish model from other objects.
   _model: true
-  
-  # Convert model to hash, You can use `only` and `except` options to specify exactly what 
+
+  # Convert model to hash, You can use `only` and `except` options to specify exactly what
   # attributes do You need. It also converts child models.
   toHash: (options) ->
     options ?= {}
-        
-    # Converting Attributes.    
+
+    # Converting Attributes.
     hash = {}
-    if options.only      
-      hash[k] = @[k] for k in options.only      
+    if options.only
+      hash[k] = @[k] for k in options.only
     else if options.except
       hash = @attributes()
       delete hash[k] for k in options.except
@@ -180,7 +180,7 @@ _(Model.prototype).extend
     for k in @constructor._children
       continue if options.only and !(options.only.indexOf(k) > 0)
       continue if options.except and (options.except.indexOf(k) > 0)
-      
+
       if obj = that[k]
         if obj.toHash
           r = obj.toHash options
@@ -199,21 +199,21 @@ _(Model.prototype).extend
         else
           r = obj
         hash[k] = r
-    
+
     # Adding class.
     klass = @constructor.name || throw new Error "no constructor name for #{util.inspect(@)}!"
     if options.only and (options.only.indexOf('class') > 0)
       hash.class = klass
     else if options.except and !(options.except.indexOf('class') > 0)
       hash.class = klass
-    else 
-      hash.class = klass    
+    else
+      hash.class = klass
 
     hash
 
   # Updates model from Hash, also updates child models.
   fromHash: (hash) ->
-    model = Model.fromHash hash, @constructor    
+    model = Model.fromHash hash, @constructor
     attributes = model.attributes()
     attributes.errors = model.errors
     @set attributes
@@ -222,9 +222,9 @@ _(Model.prototype).extend
 # Addig conversion methods to Model class.
 _(Model).extend
 
-  # Declare embedded child models `@children 'comments'`.  
+  # Declare embedded child models `@children 'comments'`.
   children: (args...) -> @_children = @_children.concat args
-  
+
   # By default there's no child models.
   _children: []
 
@@ -263,24 +263,24 @@ _(Model).extend
     # klass.afterFromHash? obj, hash
 
     obj
-    
+
   # Takes string - name of class and returns class function.
-  # 
+  #
   # In order to deserialize model from hash we need a way to get a class from its string name.
   # There may be different strategies, for example You may store Your class globally `global.Post`
   # or in some namespace for example `app.Post` or `models.Post`, or use other strategy.
-  # 
+  #
   # Override it if You need other strategy.
   getClass: (name) ->
-    global.models?[name] || global.app?[name] || global[name] || 
-      throw new Error "can't get '#{name}' class!"  
+    global.models?[name] || global.app?[name] || global[name] ||
+      throw new Error "can't get '#{name}' class!"
 
 # # Attribute types
-# 
+#
 # You can specify attribyte tupes for model, and use it to automatically cast string values to
-# correct types. 
-# 
-# For example if You declare `count` as having Number type then `model.set {count: '2'}, cast: true` 
+# correct types.
+#
+# For example if You declare `count` as having Number type then `model.set {count: '2'}, cast: true`
 # will cast String `'2'` to Number and only then assign it to model.
 
 # Extending Model with attribute types.
@@ -295,8 +295,8 @@ _(Model).extend
       caster = "cast#{attr[0..0].toUpperCase()}#{attr[1..attr.length]}"
       @prototype[caster] = (v) ->
         if type then Model._cast(v, type) else v
-        
-  # Cast string value to given type, You may override and extend it to provide more types or Your 
+
+  # Cast string value to given type, You may override and extend it to provide more types or Your
   # own custom types.
   _cast: (v, type) ->
     type ?= String
@@ -337,11 +337,11 @@ _(Model.prototype).extend
     casted
 
 # # Collection
-# 
-# Collection can store models, automatically sort it with given order and 
+#
+# Collection can store models, automatically sort it with given order and
 # notify watchers with `add`, `change`, and `delete` events if Events module provided.
 class Model.Collection
-  
+
   # Initialize collection, You may provide array of models and options.
   constructor: (models, options = {}) ->
     [@models, @length, @ids] = [[], 0, {}]
@@ -374,7 +374,7 @@ class Model.Collection
       @trigger 'change', @
 
     @
-  
+
   # Delete model or models, `delete` and `change` events will be triggered (if Events module provided).
   delete: (args...) ->
     if args.length == 1 and _.isArray(args[0])
@@ -410,7 +410,7 @@ class Model.Collection
 
   # Get model by id.
   get: (id) -> @ids[id]
-  
+
   # Get model by index.
   at: (index) -> @models[index]
 
@@ -428,7 +428,7 @@ class Model.Collection
     @
 
 # # Validations
-# 
+#
 # A shortcuts for couple of most frequently used valiations.
 _(Model.prototype).extend
 

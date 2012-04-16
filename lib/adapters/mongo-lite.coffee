@@ -11,9 +11,9 @@ _(Model.prototype).extend
 
 _(Model).extend
   # Restores model from mongo hash.
-  # 
-  # To get class name it uses `class` attribute of document or `collection.options.class`. You 
-  # also may override it and provide custom implementation. 
+  #
+  # To get class name it uses `class` attribute of document or `collection.options.class`. You
+  # also may override it and provide custom implementation.
   fromMongo : (doc, collection) ->
     className = collection.options.class || doc.class
     if className
@@ -31,19 +31,19 @@ _(colp).extend
   create: (obj, options..., callback) ->
     if obj._model
       doc = obj.toMongo()
-      
+
       @createWithoutModel doc, options..., (err, result) ->
         # In case of model result should be boolean value.
         result = not err
-  
+
         # Setting new id.
         obj.id = mongo.helper.getId(doc) unless err
-  
+
         # Intercepting unique index errors and storing it as model errors.
         if err and (err.code in [11000, 11001])
           obj.errors.add base: 'not unique'
           err = null
-        
+
         callback err, result
     else
       @createWithoutModel obj, options..., callback
@@ -51,18 +51,18 @@ _(colp).extend
   # Extending `update`.
   updateWithoutModel: colp.update
   update: (args..., callback) ->
-    if args[0]._model            
+    if args[0]._model
       [model, options] = [args[0], (args[1] || {})]
-      id = model.id || throw new Error "can't update model without id!"            
+      id = model.id || throw new Error "can't update model without id!"
       doc = model.toMongo()
       selector = {}
       mongo.helper.setId selector, id
       @updateWithoutModel selector, doc, options, (err, result) ->
-        # In case of model result should be boolean value.        
+        # In case of model result should be boolean value.
         callback err, (not err)
     else
       @updateWithoutModel args..., callback
-      
+
   # Extending `delete`.
   deleteWithoutModel: colp.delete
   delete: (args..., callback) ->
@@ -72,11 +72,11 @@ _(colp).extend
       selector = {}
       mongo.helper.setId selector, id
       @deleteWithoutModel selector, options, (err, result) ->
-        # In case of model result should be boolean value.        
+        # In case of model result should be boolean value.
         callback err, (not err)
     else
       @deleteWithoutModel args..., callback
-      
+
   # Extending `save`.
   saveWithoutModel: colp.save
   save: (args..., callback) ->
@@ -88,7 +88,7 @@ _(colp).extend
         @create args..., callback
     else
       @saveWithoutModel args..., callback
-      
+
 
 # Extending Mongo `Cursor`.
 curp = mongo.Cursor.prototype
@@ -98,7 +98,7 @@ _(curp).extend
   nextWithoutModel: curp.next
   next: (callback) ->
     @nextWithoutModel (err, doc) =>
-      return callback err if err      
+      return callback err if err
       obj = if doc and doc.class and !@options.doc
         Model.fromMongo doc, @collection
       else

@@ -20,18 +20,24 @@ rp.send = (data) ->
   @sendWithoutModel data
 
 # Unmarshal or update model.
-rp.model: (model) ->
+rp.model = (model) ->
   @model = model
+  @
 
 rp.endWithoutModel = rp.end
 rp.end = (fn) ->
   @endWithoutModel (err, res) =>
     if @model and !err
-      if @model.fromHash
-        # updating existing model.
-        fn null, @model.fromHash(res.body)
+      data = res.body
+      if _.isFunction @model
+        # unmarshalling model or array of models.
+        if _.isArray data
+          models = (PassiveModel.fromHash(doc, @model) for doc in data)
+          fn null, models
+        else
+          fn null, PassiveModel.fromHash(res.body, @model)
       else
-        # unmarshalling model.
-        fn null, PassiveModel.fromHash(res.body, @model)
+        # updating existing model.
+        fn null, @model.fromHash(data)
     else
       fn err, res

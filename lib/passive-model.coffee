@@ -1,11 +1,7 @@
 # If it's Browser, making it looks like "standard" JS.
 global ?= window
-try
-  util = require 'util'
-catch error
-  util = {inspect: (data) -> JSON.stringify(data)}
-
 _ = global._ || require 'underscore'
+raise = (msg) -> throw new Error msg
 
 # # Model
 #
@@ -39,7 +35,7 @@ class Model
   constructor: (attributes, options) ->
     @set @defaults, options if @defaults
     @set attributes if attributes
-    @errors = new Model.Errors()
+    @_wrapErrors()
     @changed = {}
 
   # Check for equality based on the content of objects, deep.
@@ -69,14 +65,20 @@ class Model
       @changed[k] = @[k] unless _.isEqual @[k], v
       @[k] = v
 
+    # Wrapping errors in handy wrapper.
+    @_wrapErrors()
+
     # Notifying observers if Events module enabled.
     if @trigger? and !_.isEmpty(@changed) and (options.silent != true)
       for k, v of @changed
         event = "change:#{k}"
         @trigger event, event, @
-      @trigger "change", 'change', @
+      @trigger 'change', 'change', @
 
     @
+
+  # Clone model
+  clone: -> new @constructor @attributes()
 
   # Clear model.
   clear: ->
@@ -90,13 +92,13 @@ class Model
   # be trigerred.
   #
   # Model is valid when `errors` property is empty.
-  valid: (options) ->
+  valid: (options = {}) ->
     oldErrors = @errors
     @errors = new Model.Errors()
     @validate()
     newErrors = @errors
     @errors = oldErrors
-    @set errors: newErrors, options
+    @set errors: newErrors, silent: options.silent
     _(@errors).size() == 0
 
   invalid: -> !@valid()
@@ -112,6 +114,13 @@ class Model
     delete attrs.errors
     delete attrs.changed
     attrs
+
+  # Wraps errors object into special wrapper with andy helper methods.
+  _wrapErrors: ->
+    unless @errors?.constructor == Model.Errors
+      old = @errors || {}
+      @errors = new Model.Errors()
+      @errors[k] = v for own k, v of old
 
 # Utility helper for adding methods to object without making it enumerable.
 definePropertyWithoutEnumeration = (obj, name, value) ->
@@ -151,10 +160,6 @@ definePropertyWithoutEnumeration Model.Errors.prototype, 'add', (args...) ->
 #
 # Convert model to and from Hash, also supports child models.
 
-# Helpers for checking if object is Array or Object.
-_isArray  = (obj) -> Array.isArray obj
-_isObject = (obj) -> Object.prototype.toString.call(obj) == "[object Object]"
-
 # Adding conversion methods to Model prototype.
 _(Model.prototype).extend
   # Marker to easy distinguish model from other objects.
@@ -175,6 +180,9 @@ _(Model.prototype).extend
     else
       hash = @attributes()
 
+    # Adding errors.
+    hash.errors = @errors if options.errors
+
     # Converting children objects.
     that = @
     for k in @constructor._children
@@ -186,12 +194,12 @@ _(Model.prototype).extend
           r = obj.toHash options
         # if obj.toArray
         #   r = obj.toArray()
-        else if _isArray obj
+        else if _.isArray obj
           r = []
           for v in obj
             v = if v.toHash then v.toHash(options) else v
             r.push v
-        else if _isObject obj
+        else if _.isObject obj
           r = {}
           for own k, v of obj
             v = if v.toHash then v.toHash(options) else v
@@ -201,12 +209,8 @@ _(Model.prototype).extend
         hash[k] = r
 
     # Adding class.
-    klass = @constructor.name || throw new Error "no constructor name for #{util.inspect(@)}!"
-    if options.only and (options.only.indexOf('class') > 0)
-      hash.class = klass
-    else if options.except and !(options.except.indexOf('class') > 0)
-      hash.class = klass
-    else
+    if options.klass
+      klass = @constructor.name || raise "no constructor name!"
       hash.class = klass
 
     hash
@@ -230,12 +234,15 @@ _(Model).extend
 
   # Creates new model from Hash, also works with child models.
   fromHash: (hash, klass) ->
+    raise "can't unmarshal model, no class provided!" unless klass
+
     # Creating object.
     obj = new klass()
 
     # Restoring attributes.
     obj[k] = v for own k, v of hash
     delete obj.class
+    obj._wrapErrors()
 
     # Restoring children.
     for k in (klass._children || [])
@@ -243,14 +250,14 @@ _(Model).extend
         if o.class
           klass = Model.getClass o.class
           r = Model.fromHash o, klass
-        else if _isArray o
+        else if _.isArray o
           r = []
           for v in o
             if v.class
               klass = Model.getClass v.class
               v = Model.fromHash v, klass
             r.push v
-        else if _isObject o
+        else if _.isObject o
           r = {}
           for own k, v of o
             if v.class
@@ -273,7 +280,7 @@ _(Model).extend
   # Override it if You need other strategy.
   getClass: (name) ->
     global.models?[name] || global.app?[name] || global[name] ||
-      throw new Error "can't get '#{name}' class!"
+      raise "can't get '#{name}' class!"
 
 # # Attribute types
 #
@@ -320,9 +327,9 @@ _(Model).extend
         tmp = new Date v
         tmp if _.isDate tmp
     else
-      throw new Error "can't cast, unknown type (#{util.inspect type})!"
+      raise "can't cast, unknown type #{type}!"
 
-    throw new Error "can't cast, invalid value (#{util.inspect v})!" unless casted?
+    raise "can't cast, invalid value #{v}!" unless casted?
     casted
 
 # Extending model with attribute types.
@@ -434,10 +441,14 @@ _(Model.prototype).extend
 
   # Validates presence of attribute or attributes.
   validatesPresenceOf: (attrs...) ->
-    for attr in attrs when _.isEmpty(@[attr]) and !_.isNumber(@[attr])
-      @errors.add attr, "can't be blank"
+    for attr in attrs
+      v = @[attr]
+      blank = (v == null) or (v == undefined) or
+        (_.isString(v) and (v.replace(/\s+/g, '') == ''))
 
-# Exporting Model to outer world.
+      @errors.add attr, "can't be blank" if blank
+
+# Exporting to outer world.
 if module?
   module.exports = Model
 else

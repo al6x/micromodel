@@ -235,6 +235,7 @@ _(Model).extend
   # Creates new model from Hash, also works with child models.
   fromHash: (hash, klass) ->
     raise "can't unmarshal model, no class provided!" unless klass
+    raise Error "#{klass} isn't ancestor of Model!" unless klass.prototype._model
 
     # Creating object.
     obj = new klass()

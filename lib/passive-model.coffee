@@ -93,12 +93,20 @@ class Model
   #
   # Model is valid when `errors` property is empty.
   valid: (options = {}) ->
+    # Returning result without validation.
+    return _(@errors).size() == 0 if options.validate == false
+
+    # Running validations.
     oldErrors = @errors
     @errors = new Model.Errors()
     @validate()
     newErrors = @errors
     @errors = oldErrors
+
+    # Triggering events.
     @set errors: newErrors, silent: options.silent
+
+    # Returning result.
     _(@errors).size() == 0
 
   invalid: -> !@valid()
@@ -155,6 +163,10 @@ definePropertyWithoutEnumeration Model.Errors.prototype, 'add', (args...) ->
     [attr, message] = args
     @[attr] ?= []
     @[attr].push message
+
+# Size of error messages.
+definePropertyWithoutEnumeration Model.Errors.prototype, 'size', (args...) ->
+  _(@).size()
 
 # # Conversions.
 #

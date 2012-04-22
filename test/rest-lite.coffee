@@ -4,7 +4,7 @@
 #
 # # Stub for Model.
 # Model = class Model
-#   isModel: true
+#   _model: true
 #
 #   constructor: (attrs) ->
 #     @errors = {}
@@ -33,7 +33,7 @@
 #       callback null, {id: 'probe', name: 'Probe'}
 #
 #     @units.get 'probe', {profile: 'short'}, (err, unit) ->
-#       expect(unit.isModel).to.be true
+#       expect(unit._model).to.be true
 #       expect(unit.attrs.name).to.be 'Probe'
 #       done()
 #
@@ -44,7 +44,7 @@
 #
 #     @units.get {page: 1}, (err, collection) ->
 #       unit = collection[0]
-#       expect(unit.isModel).to.be true
+#       expect(unit._model).to.be true
 #       expect(unit.attrs.name).to.be 'Probe'
 #       done()
 #
@@ -83,6 +83,6 @@
 #       callback null, {id: 'probe', name: 'Probe'}
 #
 #     @units.get 'probe', {}, {raw: true}, (err, unit) ->
-#       expect(unit.isModel).to.be undefined
+#       expect(unit._model).to.be undefined
 #       expect(unit.name).to.be 'Probe'
 #       done()

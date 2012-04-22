@@ -364,7 +364,7 @@ class Model.Collection
     if args.length == 1 and _.isArray(args[0])
       [models, options] = [args[0], {}]
     else
-      options = unless args[args.length - 1]?.isModel then args.pop() else {}
+      options = unless args[args.length - 1]?._model then args.pop() else {}
       models = args
 
     # Adding.
@@ -388,7 +388,7 @@ class Model.Collection
     if args.length == 1 and _.isArray(args[0])
       [models, options] = [args[0], {}]
     else
-      options = unless args[args.length - 1]?.isModel then args.pop() else {}
+      options = unless args[args.length - 1]?._model then args.pop() else {}
       models = args
 
     # Deleting

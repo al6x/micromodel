@@ -6,7 +6,7 @@ Model = require '../passive-model'
 # Extending Passive Model.
 _(Model.prototype).extend
   # Convert model to mongo hash.
-  toMongo: -> @toHash except: ['errors']
+  toMongo: -> @toHash class: true, errors: false
 
 _(Model).extend
   # Restores model from mongo hash.
@@ -98,7 +98,7 @@ _(curp).extend
   next: (callback) ->
     @nextWithoutModel (err, doc) =>
       return callback err if err
-      obj = if doc and doc.class and !@options.doc
+      obj = if doc and !@options.doc
         Model.fromMongo doc, @collection
       else
         doc

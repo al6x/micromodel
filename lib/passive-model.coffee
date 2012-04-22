@@ -181,7 +181,7 @@ _(Model.prototype).extend
       hash = @attributes()
 
     # Adding errors.
-    hash.errors = @errors if options.errors
+    hash.errors = @errors unless options.errors == false
 
     # Converting children objects.
     that = @
@@ -209,7 +209,7 @@ _(Model.prototype).extend
         hash[k] = r
 
     # Adding class.
-    if options.klass
+    if options.class
       klass = @constructor.name || raise "no constructor name!"
       hash.class = klass
 

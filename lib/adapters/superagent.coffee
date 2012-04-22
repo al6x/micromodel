@@ -1,7 +1,11 @@
 superagent ?= require 'superagent'
 PassiveModel ?= require 'passive-model'
 
+# Utility functions.
 rp = superagent.Request.prototype
+
+# Adding delete.
+superagent.delete = superagent.del
 
 # Making superagent return (err, res) if we supply two arguments to callback.
 rp.endWithoutErr = rp.end
@@ -11,12 +15,16 @@ rp.end = (fn) ->
     if res.ok then fn(null, res) else fn(response.text);
 
 # `id` helper `.get('/users').id('alex')`.
-rp.id = (obj) -> @url = "#{@url}/#{obj.id? || obj}"
+rp.id = (obj) ->
+  @url = "#{@url}/#{obj.id? || obj}"
+  @
 
 # Allow send Model.
 rp.sendWithoutModel = rp.send
 rp.send = (data) ->
-  data = data.toHash(except: ['errors', 'class']) if data._model
+  if data._model
+    @model data
+    data = data.toHash()
   @sendWithoutModel data
 
 # Unmarshal or update model.

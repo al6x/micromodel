@@ -31,7 +31,9 @@ describe "Integration with Model", ->
       unit = new Model name: 'Probe',  status: 'alive'
       expect(units.create(unit)).to.be true
       expect(unit.id).to.be.a 'string'
-      expect(units.first(name: 'Probe').status).to.eql 'alive'
+      unit = units.first(name: 'Probe')
+      expect(unit.status).to.eql 'alive'
+      expect(unit.constructor).to.eql Model
 
     sync.it "should update", ->
       units = @db.collection 'units'
@@ -40,7 +42,9 @@ describe "Integration with Model", ->
       expect(units.first(name: 'Probe').status).to.be 'alive'
       unit.status = 'dead'
       units.update(unit)
-      expect(units.first(name: 'Probe').status).to.be 'dead'
+      unit = units.first(name: 'Probe')
+      expect(unit.status).to.be 'dead'
+      expect(unit.constructor).to.eql Model
       expect(units.count()).to.be 1
 
     sync.it "should delete", ->
@@ -60,7 +64,9 @@ describe "Integration with Model", ->
       units = @db.collection 'units'
       unit = new Model name: 'Probe'
       units.save unit
-      expect(units.first({}, doc: true)).to.eql unit.toMongo()
+      hash = units.first({}, doc: true)
+      expect(hash.constructor).to.eql Object
+      expect(hash).to.eql unit.toMongo()
 
     sync.it "should intercept unique index errors", ->
       units = @db.collection 'units'
@@ -75,7 +81,9 @@ describe "Integration with Model", ->
       units = @db.collection 'units'
       expect(units.first()).to.be null
       units.save(new Model(name: 'Zeratul'))
-      expect(units.first(name: 'Zeratul').name).to.be 'Zeratul'
+      unit = units.first(name: 'Zeratul')
+      expect(unit.name).to.be 'Zeratul'
+      expect(unit.constructor).to.eql Model
 
     sync.it 'should return all elements', ->
       units = @db.collection 'units'
@@ -84,3 +92,4 @@ describe "Integration with Model", ->
       list = units.all(name: 'Zeratul')
       expect(list).to.have.length 1
       expect(list[0].name).to.be 'Zeratul'
+      expect(list[0].constructor).to.eql Model

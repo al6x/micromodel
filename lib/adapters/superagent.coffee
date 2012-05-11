@@ -16,7 +16,7 @@ rp.end = (fn) ->
 
 # `id` helper `.get('/users').id('alex')`.
 rp.id = (obj) ->
-  @url = "#{@url}/#{obj.id? || obj}"
+  @url = "#{@url}/#{obj.id || obj}"
   @
 
 # Allow send Model.
@@ -29,23 +29,23 @@ rp.send = (data) ->
 
 # Unmarshal or update model.
 rp.model = (model) ->
-  @model = model
+  @_model = model
   @
 
 rp.endWithoutModel = rp.end
 rp.end = (fn) ->
   @endWithoutModel (err, res) =>
-    if @model and !err
+    if @_model and !err
       data = res.body
-      if _.isFunction @model
+      if _.isFunction @_model
         # unmarshalling model or array of models.
         if _.isArray data
-          models = (PassiveModel.fromHash(doc, @model) for doc in data)
+          models = (PassiveModel.fromHash(doc, @_model) for doc in data)
           fn null, models
         else
-          fn null, PassiveModel.fromHash(res.body, @model)
+          fn null, PassiveModel.fromHash(res.body, @_model)
       else
         # updating existing model.
-        fn null, @model.fromHash(data)
+        fn null, @_model.fromHash(data)
     else
       fn err, res

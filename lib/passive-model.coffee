@@ -39,7 +39,10 @@ class Model
     @changed = {}
 
   # Check for equality based on the content of objects, deep.
-  eq: (other) -> _.isEqual @, other
+  eq: (other) ->
+    return false unless other._model
+    return false unless @id == other.id
+    _.isEqual @attributes(), other.attributes()
 
   # Set attributes of model, if the attribute is the same it will be ignored, list
   # of changed attributes will be available in `changed` variable.
@@ -280,7 +283,7 @@ _(Model).extend
       obj[k] = r
 
     # Allow custom processing to be added.
-    # klass.afterFromHash? obj, hash
+    obj.afterUnmarshalling? hash
 
     obj
 
@@ -370,14 +373,28 @@ class Model.Collection
 
   # Define comparator and collection always will be automatically sorted.
   sort: (options) ->
+    @comparator = options.comparator if options.comparator
+    raise "no comparator!" unless @comparator
+
+    if @comparator.length == 1
+      @models = _(@models).sortBy @comparator
+    else
+      @models.sort @comparator
+    @trigger 'change', @ if options.silent != true
+    @
 
   # Add model or models, `add` and `change` events will be triggered (if Events module provided).
   add: (args...) ->
-    if args.length == 1 and _.isArray(args[0])
+    if _.isArray(args[0])
       [models, options] = [args[0], {}]
     else
       options = unless args[args.length - 1]?._model then args.pop() else {}
+      options ?= {}
       models = args
+
+    # Transforming to model if specified and models aren't already of class of model.
+    if @modelClass and models.length > 0 and !models[0]._model
+      models = (new @modelClass model for model in models)
 
     # Adding.
     for model in models
@@ -385,8 +402,8 @@ class Model.Collection
       @ids[model.id] = model unless _.isEmpty(model.id)
     @length = @models.length
 
-    # Sorting.
-    @sort silent: true
+    # Callback to hook additional logic, sorting and filtering for example.
+    @onAdd models
 
     # Notifying
     if @trigger and (options.silent != true)
@@ -395,12 +412,17 @@ class Model.Collection
 
     @
 
+  onAdd: (models) ->
+    # Sorting.
+    @sort silent: true if @comparator
+
   # Delete model or models, `delete` and `change` events will be triggered (if Events module provided).
   delete: (args...) ->
-    if args.length == 1 and _.isArray(args[0])
+    if _.isArray(args[0])
       [models, options] = [args[0], {}]
     else
       options = unless args[args.length - 1]?._model then args.pop() else {}
+      options ?= {}
       models = args
 
     # Deleting
@@ -421,12 +443,18 @@ class Model.Collection
 
     @length = @models.length
 
+    # Callback.
+    @onDelete deleted
+
     # Notifying
     if @trigger and (options.silent != true) and (deleted.length > 0)
       @trigger 'delete', model, @ for model in deleted
       @trigger 'change', @
 
     @
+
+  # Override it if You need additional actions taken on delete.
+  onDelete: ->
 
   # Get model by id.
   get: (id) -> @ids[id]
@@ -443,9 +471,23 @@ class Model.Collection
     # Notifying
     if @trigger and (options.silent != true) and (deleted.length > 0)
       @trigger 'delete', model, @ for model in deleted
-      @trigger 'change', @
+      @trigger 'change', @ unless deleted.length == 0
 
     @
+
+  reset: (args...) ->
+    @clear()
+    @add args...
+
+  # Callbacks will be called when collection will be loaded. Collection marked as loaded
+  # by calling `loaded` without arguments.
+  loaded: (callback) ->
+    if callback
+      if @_loaded then callback() else (@_loadedListeners ?= []).push callback
+    else
+      callback() for callback in (@_loadedListeners || [])
+      delete @_loadedListeners
+      @_loaded = true
 
 # # Validations
 #

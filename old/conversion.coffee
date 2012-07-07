@@ -103,7 +103,7 @@ describe "Model Conversions", ->
   #
   #   unit = new Tmp.Unit()
   #   unit.items = [
-  #     new Tmp.Item(name: 'Psionic blade')
+  #     new Tmp.Item(name: 'Psionic blades')
   #     new Tmp.Item(name: 'Plasma shield')
   #   ]
   #

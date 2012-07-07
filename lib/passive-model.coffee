@@ -1,329 +1,154 @@
-# If it's Browser, making it looks like "standard" JS.
+# If it's Browser, making it looks like Node.js.
 global ?= window
-_ = global._ || require 'underscore'
-raise = (msg) -> throw new Error msg
+_      = global._ || require 'underscore'
 
 # # Model
 #
-# Model for representing Business Data & Logic.
+# Attributes stored as properties `model.name` but it shoud be setted only
+# via the `set` method - `model.set name: 'foo'`.
 #
-# Attributes stored as properties You can get it as `model.name` but You should set it only via `set` method,
-# like `model.set name: 'foo'`.
-# Atributes starting with `_` prefix are ignored, You can use it for temporarry things like
-# caching `_cache`.
+# Properties with `_` prefix have special meaning (like caching `model._cache`) and
+# ignored.
 #
-# By default model has no schema or attribute types, but You can define attribute types if You need it,
-# see `cast` method.
+# By default model has no schema or attribute types, but it can be defined using `model.cast`
+# method.
 #
-# It has three special properties `id`, `errors` - containing current errors
-# and `changed` - containing attributes changed from last `set` operation.
+# There are special property `model._changed` - it contains changes from the last `set` operation.
 #
-# You can define validation rules in `validate` method and run validation validity of model by
-# using `valid` method.
+# Define validation rules using `model.validations` and `model.validate`, there are
+# also `isValid` method.
 #
-# Model can be used on both Client and Server with differrent persistency providers, see `mongo-lite`
-# and `rest-lite` adapters. You can also serialize model to and from hash by using `toHash`
-# and 'fromHash` methods.
+# Model can be serialized by usng `toHash` and `fromHash` methods.
 #
-# If You need notifications (for example to use it with Backbone framework) it can be integrated with
-# Backbone.Events module, and will trigger `change` and `change:attr` events.
+# Use `model.on 'change', fn` to listen for `change` and `change:attrName` events.
 #
-# Use `_(Model.prototype).extend Backbone.Events` to integrate it with `Backbone.Events`.
+# Specify `model.schema` to cast attributes to specified types.
+#
+# Example:
+#
+#     class User extends Model
+#       validations:
+#         name: (v) -> "can't be empty" if /^\s*$/.test v
+#       schema:
+#         age     : Number
+#         enabled : (v) -> v == 'yes'
+#
+#     _(User.prototype).extend EventEmitter.prototype
+EventEmitter = null
 class Model
-  # You can initialize model with `attributes`, arguments are the same as for `set` method.
-  # You can also define the `defaults` property on the model with default attribute values.
-  constructor: (attributes, options) ->
+  # Initializing new model from `attrs` and `defaults` property.
+  constructor: (attrs, options) ->
     @set @defaults, options if @defaults
-    @set attributes if attributes
-    @_wrapErrors()
-    @changed = {}
+    @set attrs, options if attrs
+    @_changed = {}
 
-  # Check for equality based on the content of objects, deep.
-  eq: (other) ->
-    return false unless other._model
-    return false unless @id == other.id
-    _.isEqual @attributes(), other.attributes()
+    # Initializing EventEmitter if provided.
+    if @emit
+      EventEmitter ?= global.EventEmitter || require('events').EventEmitter
+      EventEmitter.call @
 
-  # Set attributes of model, if the attribute is the same it will be ignored, list
-  # of changed attributes will be available in `changed` variable.
+  # Equality check based on the content of model, deep.
+  eql = (other) ->
+    return true if @ == other
+    return false unless other and @id == other.id and _.isObject(other)
+
+    # Checking if atributes and size of objects are the same.
+    size = 0
+    for own name, value of @ when not /^_/.test name
+      size += 1
+      return false unless _.isEqual value, other[name]
+
+    otherSize = 0
+    otherSize += 1 for own name of other when not /^_/.test name
+
+    return size == otherSize
+
+  eql: eql
+
+  equal: (other) ->
+    return false unless other and @constructor == other.constructor
+    @eql other
+
+  # Integration with underscore's `_.isEqual`.
+  isEqual: eql
+
+  # Helper, get attributes as hash from .
+  attributes = (obj) ->
+    attrs = {}
+    attrs[name] = value for own name, value of obj when not /^_/.test name
+    attrs
+
+  # Set attributes of model, changed attributes will be available as `model._changed`.
   #
-  # If model implements `trigger` method (for example by extending Backbone.Events module) the
-  # following events will be triggered (except if new value of attribute is equal to old in that case
-  # no event will be triggered): `change:attr` for every changed attribute and`change`.
+  # If model implements `emit` method (for example by mixing `EventEmitter`)
+  # following events will be emitted `change:attr` and `change`.
   #
-  # - if `cast` option provided it will set only attributes that explicitly defined in
-  # schema (see `cast` method) and ignore others, You may use it as a vay to safe update attributes.
-  # - if `silent` option provided no event will be triggered.
-  #
-  set: (attributes, options) ->
-    attributes ?= {}
-    options ?= {}
+  # `silent: false` - to suppres events and `validate: false` to suppress validation.
+  # `permit: ['name', 'email'] - to set only permitted attributes.
+  set: (obj = {}, options = {}) ->
+    # Selecting attributes only.
+    attrs = attributes obj
 
-    # Casting attributes.
-    attributes = @castAttributes attributes if options.cast
+    # Selecting only permited attributes.
+    if permit = options.permit
+      permited = {}
+      permited[name] = value for name, value of attrs when name in permit
+      attrs = permited
 
-    # Updating attributes & tracking changes.
-    @changed = {}
-    for own k, v of attributes
-      @changed[k] = @[k] unless _.isEqual @[k], v
-      @[k] = v
+    # Casting attributes to specified types.
+    attrs[name] = Model.cast(attrs[name], type) for name, type of @schema if @schema
 
-    # Wrapping errors in handy wrapper.
-    @_wrapErrors()
+    # Validating attributes.
+    return false if @validate(attrs) and options.validate != false
 
-    # Notifying observers if Events module enabled.
-    if @trigger? and !_.isEmpty(@changed) and (options.silent != true)
-      for k, v of @changed
-        event = "change:#{k}"
-        @trigger event, event, @
-      @trigger 'change', 'change', @
+    # Updating and tracking changes.
+    @_changed = {}
+    unless options.silent
+      for name, newValue of attrs
+        currentValue = @[name]
+        unless _.isEqual currentValue, newValue
+          @_changed[name] = currentValue
+          @[name]         = newValue
+    else
+      @[name] = newValue for name, newValue of attrs
 
-    @
+    # Emitting changes.
+    unless options.silent or !@emit or _.isEmpty(@_changed)
+      @emit "change:#{name}", @ for name of @_changed
+      @emit 'change', @
 
-  # Clone model
+    true
+
+  # Shallow clone of model.
   clone: -> new @constructor @attributes()
 
   # Clear model.
   clear: ->
-    delete @[k] for own k, v of @
-    @errors = new Model.Errors()
-    @changed = {}
+    delete @[name] for own name of @
+    @_changed = {}
     @
 
-  # Check model for validity using `validate` method, if there will be errors - they will be saved in
-  # `errors` property. If model implements `trigger` method `change:errors` & `change` events will
-  # be trigerred.
-  #
-  # Model is valid when `errors` property is empty.
-  valid: (options = {}) ->
-    # Returning result without validation.
-    return _(@errors).size() == 0 if options.validate == false
-
-    # Running validations.
-    oldErrors = @errors
-    @errors = new Model.Errors()
-    @validate()
-    newErrors = @errors
-    @errors = oldErrors
-
-    # Triggering events.
-    @set errors: newErrors, silent: options.silent
-
-    # Returning result.
-    _(@errors).size() == 0
-
-  invalid: -> !@valid()
+  # Validating attributes, returns `null` if attributes valid or any not null object as error.
+  validate: (attrs = {}) ->
+    return null unless @validations
+    errors = {}
+    for name, value of attrs
+      (errors[name] ?= []).push msg if msg = @validations[name]?(value)
+    if _.size(errors) > 0 then errors else null
 
   # Define validation rules and store errors in `errors` property `@errors.add name: "can't be blank"`.
-  validate: ->
+  isValid: -> @validate @
 
-  # Return list of model attributes, properties starting from `_` prefix are ignored, so are special
-  # `errors` and `changed` properties.
-  attributes: ->
-    attrs = {}
-    attrs[k] = v for own k, v of @ when not /^_/.test k
-    delete attrs.errors
-    delete attrs.changed
-    attrs
+  attributes: -> attributes @
 
-  # Wraps errors object into special wrapper with andy helper methods.
-  _wrapErrors: ->
-    unless @errors?.constructor == Model.Errors
-      old = @errors || {}
-      @errors = new Model.Errors()
-      @errors[k] = v for own k, v of old
+  # JSON conversion, including nested models.
+  toJSON: -> attributes @
 
-# Utility helper for adding methods to object without making it enumerable.
-definePropertyWithoutEnumeration = (obj, name, value) ->
-  Object.defineProperty obj, name,
-      enumerable: false
-      writable: true
-      configurable: true
-      value: value
+  # Cast value to type, override it to provide more types.
+  @cast: (value, type) ->
+    return type value if _.isFunction type
 
-# # Errors
-#
-# Error messages stored in `errors` property of model in arbitrary format, but usually its strucrue
-# looks like this:
-#
-#   errors:
-#     name   : ["can't be blank"]
-#     accept : ['must be accepted']
-#
-# in order to easy working with errors we adding helper methods `add` and `clear`.
-class Model.Errors
-
-# Clearing error messages.
-definePropertyWithoutEnumeration Model.Errors.prototype, 'clear', ->
-  delete @[k] for own k, v of @
-
-# Adding message to errors, use `@errors.add name: "can't be blank"` it will be added as
-# `{name: ["can't be blank"]}`.
-definePropertyWithoutEnumeration Model.Errors.prototype, 'add', (args...) ->
-  if args.length == 1
-    @add attr, message for attr, message of args[0]
-  else
-    [attr, message] = args
-    @[attr] ?= []
-    @[attr].push message
-
-# Size of error messages.
-definePropertyWithoutEnumeration Model.Errors.prototype, 'size', (args...) ->
-  _(@).size()
-
-# # Conversions.
-#
-# Convert model to and from Hash, also supports child models.
-
-# Adding conversion methods to Model prototype.
-_(Model.prototype).extend
-  # Marker to easy distinguish model from other objects.
-  _model: true
-
-  # Convert model to hash, You can use `only` and `except` options to specify exactly what
-  # attributes do You need. It also converts child models.
-  toHash: (options) ->
-    options ?= {}
-
-    # Converting Attributes.
-    hash = {}
-    if options.only
-      hash[k] = @[k] for k in options.only
-    else if options.except
-      hash = @attributes()
-      delete hash[k] for k in options.except
-    else
-      hash = @attributes()
-
-    # Adding errors.
-    hash.errors = @errors unless options.errors == false
-
-    # Converting children objects.
-    that = @
-    for k in @constructor._children
-      continue if options.only and !(options.only.indexOf(k) > 0)
-      continue if options.except and (options.except.indexOf(k) > 0)
-
-      if obj = that[k]
-        if obj.toHash
-          r = obj.toHash options
-        # if obj.toArray
-        #   r = obj.toArray()
-        else if _.isArray obj
-          r = []
-          for v in obj
-            v = if v.toHash then v.toHash(options) else v
-            r.push v
-        else if _.isObject obj
-          r = {}
-          for own k, v of obj
-            v = if v.toHash then v.toHash(options) else v
-            r[k] = v
-        else
-          r = obj
-        hash[k] = r
-
-    # Adding class.
-    if options.class
-      klass = @constructor.name || raise "no constructor name!"
-      hash.class = klass
-
-    hash
-
-  # Updates model from Hash, also updates child models.
-  fromHash: (hash) ->
-    model = Model.fromHash hash, @constructor
-    attributes = model.attributes()
-    attributes.errors = model.errors
-    @set attributes
-    @
-
-# Addig conversion methods to Model class.
-_(Model).extend
-
-  # Declare embedded child models `@children 'comments'`.
-  children: (args...) -> @_children = @_children.concat args
-
-  # By default there's no child models.
-  _children: []
-
-  # Creates new model from Hash, also works with child models.
-  fromHash: (hash, klass) ->
-    raise "can't unmarshal model, no class provided!" unless klass
-    raise Error "#{klass} isn't ancestor of Model!" unless klass.prototype._model
-
-    # Creating object.
-    obj = new klass()
-
-    # Restoring attributes.
-    obj[k] = v for own k, v of hash
-    delete obj.class
-    obj._wrapErrors()
-
-    # Restoring children.
-    for k in (klass._children || [])
-      if o = hash[k]
-        if o.class
-          klass = Model.getClass o.class
-          r = Model.fromHash o, klass
-        else if _.isArray o
-          r = []
-          for v in o
-            if v.class
-              klass = Model.getClass v.class
-              v = Model.fromHash v, klass
-            r.push v
-        else if _.isObject o
-          r = {}
-          for own k, v of o
-            if v.class
-              klass = Model.getClass v.class
-              v = Model.fromHash v, klass
-            r[k] = v
-      obj[k] = r
-
-    # Allow custom processing to be added.
-    obj.afterUnmarshalling? hash
-
-    obj
-
-  # Takes string - name of class and returns class function.
-  #
-  # In order to deserialize model from hash we need a way to get a class from its string name.
-  # There may be different strategies, for example You may store Your class globally `global.Post`
-  # or in some namespace for example `app.Post` or `models.Post`, or use other strategy.
-  #
-  # Override it if You need other strategy.
-  getClass: (name) ->
-    global.models?[name] || global.app?[name] || global[name] ||
-      raise "can't get '#{name}' class!"
-
-# # Attribute types
-#
-# You can specify attribyte tupes for model, and use it to automatically cast string values to
-# correct types.
-#
-# For example if You declare `count` as having Number type then `model.set {count: '2'}, cast: true`
-# will cast String `'2'` to Number and only then assign it to model.
-
-# Extending Model with attribute types.
-_(Model).extend
-
-  # Use `cast count: Number` to declare that `count` attribute has Number type.
-  cast: (args...) ->
-    if args.length == 1
-      @cast attr, type for own attr, type of args[0]
-    else
-      [attr, type] = args
-      caster = "cast#{attr[0..0].toUpperCase()}#{attr[1..attr.length]}"
-      @prototype[caster] = (v) ->
-        if type then Model._cast(v, type) else v
-
-  # Cast string value to given type, You may override and extend it to provide more types or Your
-  # own custom types.
-  _cast: (v, type) ->
-    type ?= String
-    casted = if type == String
+    if type == String
       v.toString()
     else if type == Number
       if _.isNumber(v)
@@ -343,168 +168,140 @@ _(Model).extend
         tmp = new Date v
         tmp if _.isDate tmp
     else
-      raise "can't cast, unknown type #{type}!"
+      throw "can't cast to unknown type (#{type})!"
 
-    raise "can't cast, invalid value #{v}!" unless casted?
-    casted
-
-# Extending model with attribute types.
-_(Model.prototype).extend
-
-  # Cast string attributes to correct types, if attribute have no type it will be ignored and skipped.
-  castAttributes: (attributes = {}) ->
-    casted = {}
-    for own k, v of attributes
-      caster = "cast#{k[0..0].toUpperCase()}#{k[1..k.length]}"
-      casted[k] = @[caster] v if caster of @
-    casted
-
-# # Collection
+# # # Collection
+# #
+# # Collection can store models, automatically sort it with given order and
+# # notify watchers with `add`, `change`, and `delete` events if Events module provided.
+# class Model.Collection
 #
-# Collection can store models, automatically sort it with given order and
-# notify watchers with `add`, `change`, and `delete` events if Events module provided.
-class Model.Collection
-
-  # Initialize collection, You may provide array of models and options.
-  constructor: (models, options = {}) ->
-    [@models, @length, @ids] = [[], 0, {}]
-    @comparator = options.comparator
-    @add models if models
-
-  # Define comparator and collection always will be automatically sorted.
-  sort: (options) ->
-    @comparator = options.comparator if options.comparator
-    raise "no comparator!" unless @comparator
-
-    if @comparator.length == 1
-      @models = _(@models).sortBy @comparator
-    else
-      @models.sort @comparator
-    @trigger 'change', @ if options.silent != true
-    @
-
-  # Add model or models, `add` and `change` events will be triggered (if Events module provided).
-  add: (args...) ->
-    if _.isArray(args[0])
-      [models, options] = [args[0], {}]
-    else
-      options = unless args[args.length - 1]?._model then args.pop() else {}
-      options ?= {}
-      models = args
-
-    # Transforming to model if specified and models aren't already of class of model.
-    if @modelClass and models.length > 0 and !models[0]._model
-      models = (new @modelClass model for model in models)
-
-    # Adding.
-    for model in models
-      @models.push model
-      @ids[model.id] = model unless _.isEmpty(model.id)
-    @length = @models.length
-
-    # Callback to hook additional logic, sorting and filtering for example.
-    @onAdd models
-
-    # Notifying
-    if @trigger and (options.silent != true)
-      @trigger 'add', model, @ for model in models
-      @trigger 'change', @
-
-    @
-
-  onAdd: (models) ->
-    # Sorting.
-    @sort silent: true if @comparator
-
-  # Delete model or models, `delete` and `change` events will be triggered (if Events module provided).
-  delete: (args...) ->
-    if _.isArray(args[0])
-      [models, options] = [args[0], {}]
-    else
-      options = unless args[args.length - 1]?._model then args.pop() else {}
-      options ?= {}
-      models = args
-
-    # Deleting
-    deleted = []
-    for model in models
-      id = model.id
-      unless _.isEmpty id
-        if id of @ids
-          deleted.push model
-          delete @ids[id]
-          index = @models.indexOf model
-          @models.splice index, 1
-      else
-        for m, index in @models when model.eq m
-          deleted.push m
-          delete @ids[m.id]
-          @models.splice index, 1
-
-    @length = @models.length
-
-    # Callback.
-    @onDelete deleted
-
-    # Notifying
-    if @trigger and (options.silent != true) and (deleted.length > 0)
-      @trigger 'delete', model, @ for model in deleted
-      @trigger 'change', @
-
-    @
-
-  # Override it if You need additional actions taken on delete.
-  onDelete: ->
-
-  # Get model by id.
-  get: (id) -> @ids[id]
-
-  # Get model by index.
-  at: (index) -> @models[index]
-
-  # Clear collection, `delete` and `change` events will be triggered (if Events module provided).
-  clear: (options = {}) ->
-    # Deleting
-    deleted = @models
-    [@models, @length, @ids] = [[], 0, {}]
-
-    # Notifying
-    if @trigger and (options.silent != true) and (deleted.length > 0)
-      @trigger 'delete', model, @ for model in deleted
-      @trigger 'change', @ unless deleted.length == 0
-
-    @
-
-  reset: (args...) ->
-    @clear()
-    @add args...
-
-  # Callbacks will be called when collection will be loaded. Collection marked as loaded
-  # by calling `loaded` without arguments.
-  loaded: (callback) ->
-    if callback
-      if @_loaded then callback() else (@_loadedListeners ?= []).push callback
-    else
-      callback() for callback in (@_loadedListeners || [])
-      delete @_loadedListeners
-      @_loaded = true
-
-# # Validations
+#   # Initialize collection, You may provide array of models and options.
+#   constructor: (models, options = {}) ->
+#     [@models, @length, @ids] = [[], 0, {}]
+#     @comparator = options.comparator
+#     @add models if models
 #
-# A shortcuts for couple of most frequently used valiations.
-_(Model.prototype).extend
+#   # Define comparator and collection always will be automatically sorted.
+#   sort: (options) ->
+#     @comparator = options.comparator if options.comparator
+#     throw "no comparator!" unless @comparator
+#
+#     if @comparator.length == 1
+#       @models = _(@models).sortBy @comparator
+#     else
+#       @models.sort @comparator
+#     @trigger 'change', @ if options.silent != true
+#     @
+#
+#   # Add model or models, `add` and `change` events will be triggered (if Events module provided).
+#   add: (args...) ->
+#     if _.isArray(args[0])
+#       [models, options] = [args[0], {}]
+#     else
+#       options = unless args[args.length - 1]?._model then args.pop() else {}
+#       options ?= {}
+#       models = args
+#
+#     # Transforming to model if specified and models aren't already of class of model.
+#     if @modelClass and models.length > 0 and !models[0]._model
+#       models = (new @modelClass model for model in models)
+#
+#     # Adding.
+#     for model in models
+#       @models.push model
+#       @ids[model.id] = model unless _.isEmpty(model.id)
+#     @length = @models.length
+#
+#     # Callback to hook additional logic, sorting and filtering for example.
+#     @onAdd models
+#
+#     # Notifying
+#     if @trigger and (options.silent != true)
+#       @trigger 'add', model, @ for model in models
+#       @trigger 'change', @
+#
+#     @
+#
+#   onAdd: (models) ->
+#     # Sorting.
+#     @sort silent: true if @comparator
+#
+#   # Delete model or models, `delete` and `change` events will be triggered (if Events module provided).
+#   delete: (args...) ->
+#     if _.isArray(args[0])
+#       [models, options] = [args[0], {}]
+#     else
+#       options = unless args[args.length - 1]?._model then args.pop() else {}
+#       options ?= {}
+#       models = args
+#
+#     # Deleting
+#     deleted = []
+#     for model in models
+#       id = model.id
+#       unless _.isEmpty id
+#         if id of @ids
+#           deleted.push model
+#           delete @ids[id]
+#           index = @models.indexOf model
+#           @models.splice index, 1
+#       else
+#         for m, index in @models when model.eql m
+#           deleted.push m
+#           delete @ids[m.id]
+#           @models.splice index, 1
+#
+#     @length = @models.length
+#
+#     # Callback.
+#     @onDelete deleted
+#
+#     # Notifying
+#     if @trigger and (options.silent != true) and (deleted.length > 0)
+#       @trigger 'delete', model, @ for model in deleted
+#       @trigger 'change', @
+#
+#     @
+#
+#   # Override it if You need additional actions taken on delete.
+#   onDelete: ->
+#
+#   # Get model by id.
+#   get: (id) -> @ids[id]
+#
+#   # Get model by index.
+#   at: (index) -> @models[index]
+#
+#   # Clear collection, `delete` and `change` events will be triggered (if Events module provided).
+#   clear: (options = {}) ->
+#     # Deleting
+#     deleted = @models
+#     [@models, @length, @ids] = [[], 0, {}]
+#
+#     # Notifying
+#     if @trigger and (options.silent != true) and (deleted.length > 0)
+#       @trigger 'delete', model, @ for model in deleted
+#       @trigger 'change', @ unless deleted.length == 0
+#
+#     @
+#
+#   reset: (args...) ->
+#     @clear()
+#     @add args...
+#
+#   # Callbacks will be called when collection will be loaded. Collection marked as loaded
+#   # by calling `loaded` without arguments.
+#   loaded: (callback) ->
+#     if callback
+#       if @_loaded then callback() else (@_loadedListeners ?= []).push callback
+#     else
+#       callback() for callback in (@_loadedListeners || [])
+#       delete @_loadedListeners
+#       @_loaded = true
 
-  # Validates presence of attribute or attributes.
-  validatesPresenceOf: (attrs...) ->
-    for attr in attrs
-      v = @[attr]
-      blank = (v == null) or (v == undefined) or
-        (_.isString(v) and (v.replace(/\s+/g, '') == ''))
-
-      @errors.add attr, "can't be blank" if blank
-
-# Exporting to outer world.
+# Exporting.
 if module?
   module.exports = Model
 else
- global.PassiveModel = Model
+  global.PassiveModel = Model

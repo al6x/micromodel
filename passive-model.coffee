@@ -4,6 +4,10 @@ _ = @_ || require 'underscore'
 
 # Model can be used without events or integrated with EventEmitter or Backbone.Events.
 [useEvents, initializeEmitter, addListener, removeListener, emit] = [false, null, null, null, null]
+
+PassiveModel.dontUseEvents = ->
+  useEvents = false
+
 PassiveModel.useEventEmitter = (EventEmitter) ->
   useEvents = true
   _(PassiveModel.Model.prototype).extend EventEmitter.prototype
@@ -21,9 +25,6 @@ PassiveModel.useBackboneEvents = (BackboneEvents) ->
   addListener       = (obj, event, fn) -> obj.on event, fn
   removeListener    = (obj, event, fn) -> obj.off event, fn
   emit              = (obj, event, arg1, arg2) -> obj.trigger event, arg1, arg2
-
-PassiveModel.dontUseEvents = ->
-  useEvents = false
 
 # # Model
 #
@@ -59,15 +60,17 @@ PassiveModel.dontUseEvents = ->
 PassiveModel.Model = class Model
   # Initializing new model from `attrs` and `defaults` property.
   constructor: (attrs, options) ->
+    initializeEmitter @ if useEvents
+    [@_cid, @_changed] = [_.uniqueId('c'), {}]
     @set @defaults, options if @defaults
     @set attrs, options if attrs
-    @_changed = {}
-    initializeEmitter @ if useEvents
 
   # Equality check based on the content of model, deep.
-  eql = (other) ->
+  eql: (other, strict = false) ->
     return true if @ == other
     return false unless other and @id == other.id and _.isObject(other)
+    if strict
+      return false unless @_cid == other._cid and @constructor == other.constructor
 
     # Checking if atributes and size of objects are the same.
     size = 0
@@ -80,14 +83,7 @@ PassiveModel.Model = class Model
 
     return size == otherSize
 
-  eql: eql
-
-  equal: (other) ->
-    return false unless other and @constructor == other.constructor
-    @eql other
-
-  # Integration with underscore's `_.isEqual`.
-  isEqual: eql
+  equal: (other) -> @eql other, true
 
   # Helper, get attributes as hash from .
   attributes = (obj) ->
@@ -102,7 +98,9 @@ PassiveModel.Model = class Model
   #
   # `silent: false` - to suppres events and `validate: false` to suppress validation.
   # `permit: ['name', 'email'] - to set only permitted attributes.
-  set: (obj = {}, options = {}) ->
+  set: (obj, options = {}) ->
+    return unless obj
+
     # Selecting attributes only.
     attrs = attributes obj
 
@@ -158,32 +156,23 @@ PassiveModel.Model = class Model
 
   attributes: -> attributes @
 
-  # JSON conversion, including nested models.
-  toJSON: -> attributes @
-
   inspect: -> JSON.stringify attributes @
-  toString: -> inspect @
+  toString: -> @inspect()
 
   # Cast value to type, override it to provide more types.
   @cast: (value, type) ->
-    return type value if _.isFunction type
-
-    if type == String
-      v.toString()
+    if _.isFunction type then type value
+    else if type == String then v.toString()
     else if type == Number
-      if _.isNumber(v)
-        v
+      if _.isNumber(v) then v
       else if _.isString v
         tmp = parseInt v
         tmp if _.isNumber tmp
     else if type == Boolean
-      if _.isBoolean v
-        v
-      else if _.isString v
-        v == 'true'
+      if _.isBoolean v then v
+      else if _.isString v then v == 'true'
     else if type == Date
-      if _.isDate v
-        v
+      if _.isDate v then v
       else if _.isString v
         tmp = new Date v
         tmp if _.isDate tmp
@@ -198,10 +187,10 @@ PassiveModel.Model = class Model
 PassiveModel.Collection = class Collection
   # Initialize collection, You may provide array of models and options.
   constructor: (models, options = {}) ->
-    [@models, @length, @ids] = [[], 0, {}]
-    @comparator = options.comparator
-    @add models if models
     initializeEmitter @ if useEvents
+    [@models, @length, @ids, @cids] = [[], 0, {}, {}]
+    @comparator = options.comparator
+    @add models, options if models
 
   # Define comparator and collection always will be automatically sorted.
   sort: (options) ->
@@ -227,29 +216,30 @@ PassiveModel.Collection = class Collection
       options = unless lastArgument instanceof Model then args.pop() else {}
       models = args
     options ?= {}
+    return unless models.length > 0
 
     # Transforming object to model if it isn't.
     tmp = models
     models = []
-    for model in models
+    for model in tmp
       unless model instanceof Model
-        klass = @model || throw "no Model class for Collection!"
+        klass = @model || throw "no Model class for Collection (#{@})!"
         model = new klass model
-      models.push
+      models.push model
 
     # Adding to collection.
     added = []
     for model in models
-      throw "can't add Model without id to Collection (#{model.inspect()})!" unless model.id
       # Model can be added only once, ignoring if it tried to be added twice.
-      continue if id of @ids
+      continue if (model.id of @ids) or (model._cid of @cids)
       @ids[model.id] = model
+      @cids[model._cid] = model
       @models.push model
       added.push model
     @length = @models.length
 
     # Proxing model events.
-    addListener model, 'change', @proxyModelEvent for model in added if useEvents
+    addListener model, 'change', @_proxyModelEvent for model in added if useEvents
 
     # Sorting.
     @sort silent: true if @comparator
@@ -269,20 +259,22 @@ PassiveModel.Collection = class Collection
       options = unless lastArgument instanceof Model then args.pop() else {}
       models = args
     options ?= {}
+    return unless models.length > 0
 
     # Deleting
     deleted = []
     for model in models
       # Ignoring models that aren't in collection.
-      continue unless model.id of @ids
+      continue unless (model.id of @ids) or (model._cid of @cids)
       index = @models.indexOf model
-      delete @ids[id]
+      delete @ids[model.id]
+      delete @cids[model._cid]
       @models.splice index, 1
       deleted.push model
     @length = @models.length
 
     # Removing model events proxy.
-    removeListener model, 'change', @proxyModelEvent for model in deleted if useEvents
+    removeListener model, 'change', @_proxyModelEvent for model in deleted if useEvents
 
     # Emitting events.
     if useEvents and not options.silent and deleted.length > 0
@@ -290,10 +282,12 @@ PassiveModel.Collection = class Collection
       emit @, 'change', @
     @
 
-  proxyModelEvent: (event, model) => emit @, "model:#{event}", model, @
+  _proxyModelEvent: (model) => emit @, 'model:change', model, @
 
   # Get model by id.
-  get: (id) -> @ids[id]
+  get: (id) -> @ids[id] || @cids[id]
+
+  has: (id) -> (id of @ids) or (id of @cids)
 
   # Get model by index.
   at: (index) -> @models[index]
@@ -302,10 +296,10 @@ PassiveModel.Collection = class Collection
   clear: (options = {}) ->
     # Deleting
     deleted = @models
-    [@models, @length, @ids] = [[], 0, {}]
+    [@models, @length, @ids, @cids] = [[], 0, {}, {}]
 
     # Removing model events proxy.
-    removeListener model, 'change', @proxyModelEvent for model in deleted if useEvents
+    removeListener model, 'change', @_proxyModelEvent for model in deleted if useEvents
 
     # Emitting events.
     if useEvents and not options.silent and deleted.length > 0
@@ -318,8 +312,37 @@ PassiveModel.Collection = class Collection
     @clear()
     @add args...
 
-  # JSON conversion, including nested models.
-  toJSON: -> @models
-
   inspect: -> JSON.stringify @models
-  toString: -> inspect @
+  toString: -> @inspect()
+
+  # Equality check based on list of models.
+  eql: (other, strict = false) ->
+    return true if @ == other
+    return false unless other and other.length == @length and other.models
+    if strict
+      return false unless other and @constructor == other.constructor
+    for index, model in @models
+      return false unless model.eql other.models[index], strict
+    true
+
+  equal: (other) -> @eql other, true
+
+# Underscore methods that we want to implement on the Collection.
+methods = ['forEach', 'each', 'map', 'reduce', 'reduceRight', 'find',
+  'detect', 'filter', 'select', 'reject', 'every', 'all', 'some', 'any',
+  'include', 'contains', 'invoke', 'max', 'min', 'sortBy', 'sortedIndex',
+  'toArray', 'size', 'first', 'initial', 'rest', 'last', 'without', 'indexOf',
+  'shuffle', 'lastIndexOf', 'isEmpty', 'groupBy'];
+
+# Mix in each Underscore method as a proxy to `Collection#models`.
+_.each methods, (method) ->
+  PassiveModel.Collection.prototype[method] = ->
+    _[method].apply _, [@models].concat _.toArray(arguments)
+
+# Integration with underscore's `_.isEqual`.
+Model.prototype.isEqual      = Model.prototype.eql
+Collection.prototype.isEqual = Collection.prototype.eql
+
+# Integration with JSON.
+Model.prototype.toJSON      = -> @attributes()
+Collection.prototype.toJSON = -> @models

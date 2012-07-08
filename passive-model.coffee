@@ -5,27 +5,6 @@ _ = @_ || require 'underscore'
 # Model can be used without events or integrated with EventEmitter or Backbone.Events.
 [useEvents, initializeEmitter, addListener, removeListener, emit] = [false, null, null, null, null]
 
-PassiveModel.dontUseEvents = ->
-  useEvents = false
-
-PassiveModel.useEventEmitter = (EventEmitter) ->
-  useEvents = true
-  _(PassiveModel.Model.prototype).extend EventEmitter.prototype
-  _(PassiveModel.Collection.prototype).extend EventEmitter.prototype
-  initializeEmitter = (obj) -> EventEmitter.call @
-  addListener       = (obj, event, fn) -> obj.addListener event, fn
-  removeListener    = (obj, event, fn) -> obj.removeListener event, fn
-  emit              = (obj, event, arg1, arg2) -> obj.emit event, arg1, arg2
-
-PassiveModel.useBackboneEvents = (BackboneEvents) ->
-  useEvents = true
-  _(PassiveModel.Model.prototype).extend BackboneEvents
-  _(PassiveModel.Collection.prototype).extend BackboneEvents
-  initializeEmitter = (obj) -> EventEmitter.call @
-  addListener       = (obj, event, fn) -> obj.on event, fn
-  removeListener    = (obj, event, fn) -> obj.off event, fn
-  emit              = (obj, event, arg1, arg2) -> obj.trigger event, arg1, arg2
-
 # # Model
 #
 # Attributes stored as properties `model.name` but it shoud be setted only
@@ -64,6 +43,10 @@ PassiveModel.Model = class Model
     [@_cid, @_changed] = [_.uniqueId('c'), {}]
     @set @defaults, options if @defaults
     @set attrs, options if attrs
+    @initialize.apply @, arguments
+
+  # Default empty initializer, override it to change.
+  initialize: ->
 
   # Equality check based on the content of model, deep.
   eql: (other, strict = false) ->
@@ -191,6 +174,10 @@ PassiveModel.Collection = class Collection
     [@models, @length, @ids, @cids] = [[], 0, {}, {}]
     @comparator = options.comparator
     @add models, options if models
+    @initialize.apply @, arguments
+
+  # Default empty initializer, override it to change.
+  initialize: ->
 
   # Define comparator and collection always will be automatically sorted.
   sort: (options) ->
@@ -327,6 +314,8 @@ PassiveModel.Collection = class Collection
 
   equal: (other) -> @eql other, true
 
+# # Utilities and integration with third party tools.
+
 # Underscore methods that we want to implement on the Collection.
 methods = ['forEach', 'each', 'map', 'reduce', 'reduceRight', 'find',
   'detect', 'filter', 'select', 'reject', 'every', 'all', 'some', 'any',
@@ -343,6 +332,82 @@ _.each methods, (method) ->
 Model.prototype.isEqual      = Model.prototype.eql
 Collection.prototype.isEqual = Collection.prototype.eql
 
+# Integration with EventEmitter and Backbone.Events.
+PassiveModel.dontUseEvents = ->
+  useEvents = false
+
+PassiveModel.useEventEmitter = (EventEmitter) ->
+  useEvents = true
+  _(PassiveModel.Model.prototype).extend EventEmitter.prototype
+  _(PassiveModel.Collection.prototype).extend EventEmitter.prototype
+  initializeEmitter = (obj) -> EventEmitter.call @
+  addListener       = (obj, event, fn) -> obj.addListener event, fn
+  removeListener    = (obj, event, fn) -> obj.removeListener event, fn
+  emit              = (obj, event, arg1, arg2) -> obj.emit event, arg1, arg2
+
+PassiveModel.useBackboneEvents = (BackboneEvents) ->
+  useEvents = true
+  _(PassiveModel.Model.prototype).extend BackboneEvents
+  _(PassiveModel.Collection.prototype).extend BackboneEvents
+  initializeEmitter = (obj) -> EventEmitter.call @
+  addListener       = (obj, event, fn) -> obj.on event, fn
+  removeListener    = (obj, event, fn) -> obj.off event, fn
+  emit              = (obj, event, arg1, arg2) -> obj.trigger event, arg1, arg2
+
 # Integration with JSON.
 Model.prototype.toJSON      = -> @attributes()
 Collection.prototype.toJSON = -> @models
+
+# Support for inheritance in case of JavaScript used, instead of
+# CoffeeScript (ripped from Backbone).
+
+# The self-propagating extend function that Backbone classes use.
+extend = `function (protoProps, classProps) {
+  var child = inherits(this, protoProps, classProps);
+  child.extend = this.extend;
+  return child;
+}`
+
+# Shared empty constructor function to aid in prototype-chain creation.
+ctor = ->
+
+# Helper function to correctly set up the prototype chain, for subclasses.
+# Similar to `goog.inherits`, but uses a hash of prototype properties and
+# class properties to be extended.
+inherits = `function(parent, protoProps, staticProps) {
+  var child;
+
+  // The constructor function for the new subclass is either defined by you
+  // (the "constructor" property in your extend definition), or defaulted
+  // by us to simply call the parent's constructor.
+  if (protoProps && protoProps.hasOwnProperty('constructor')) {
+    child = protoProps.constructor;
+  } else {
+    child = function(){ parent.apply(this, arguments); };
+  }
+
+  // Inherit class (static) properties from parent.
+  _.extend(child, parent);
+
+  // Set the prototype chain to inherit from parent, without calling
+  // parent's constructor function.
+  ctor.prototype = parent.prototype;
+  child.prototype = new ctor();
+
+  // Add prototype properties (instance properties) to the subclass,
+  // if supplied.
+  if (protoProps) _.extend(child.prototype, protoProps);
+
+  // Add static properties to the constructor function, if supplied.
+  if (staticProps) _.extend(child, staticProps);
+
+  // Correctly set child's prototype.constructor.
+  child.prototype.constructor = child;
+
+  // Set a convenience property in case the parent's prototype is needed later.
+  child.__super__ = parent.prototype;
+
+  return child;
+}`
+
+Model.extend = Collection.extend = extend

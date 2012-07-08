@@ -1,10 +1,15 @@
+global.p      = (args...) -> console.log args...
+
 expect        = require('chai').expect
-Model         = require '../lib/passive-model'
+PassiveModel  = require '../passive-model'
+Model         = PassiveModel.Model
 EventEmitter  = require('events').EventEmitter
 _             = require 'underscore'
-p             = (args...) -> console.log args...
 
 describe "Model", ->
+  beforeEach ->
+    PassiveModel.dontUseEvents()
+
   it "should update attributes", ->
     class Unit extends Model
     unit = new Unit()
@@ -99,8 +104,9 @@ describe "Model", ->
     expect(unit.attributes()).to.eql name: 'Probe', health: 100, alive: true
 
   it "should emit change events", ->
+    PassiveModel.useEventEmitter EventEmitter
+
     class Unit extends Model
-    _(Unit.prototype).extend EventEmitter.prototype
     unit = new Unit()
     events = []
     unit.on 'change:name', -> events.push 'change:name'

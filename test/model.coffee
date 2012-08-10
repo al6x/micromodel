@@ -1,12 +1,12 @@
 global.p         = (args...) -> console.log args...
 
 expect           = require('chai').expect
-PassiveModel     = require '../passive-model'
-Model            = PassiveModel.Model
-withModel        = PassiveModel.withModel
-withEventEmitter = PassiveModel.withEventEmitter
+MicroModel     = require '../micromodel'
+Model            = MicroModel.Model
+withModel        = MicroModel.withModel
+withEventEmitter = MicroModel.withEventEmitter
 _                = require 'underscore'
-klass            = PassiveModel.klass
+klass            = MicroModel.klass
 
 describe "Model", ->
   it "should update attributes", ->

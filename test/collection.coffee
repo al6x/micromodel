@@ -1,14 +1,14 @@
 global.p         = (args...) -> console.log args...
 
 expect           = require('chai').expect
-PassiveModel     = require '../passive-model'
-Model            = PassiveModel.Model
-withModel        = PassiveModel.withModel
-Collection       = PassiveModel.Collection
-withCollection   = PassiveModel.withCollection
-withEventEmitter = PassiveModel.withEventEmitter
+MicroModel     = require '../micromodel'
+Model            = MicroModel.Model
+withModel        = MicroModel.withModel
+Collection       = MicroModel.Collection
+withCollection   = MicroModel.withCollection
+withEventEmitter = MicroModel.withEventEmitter
 _                = require 'underscore'
-klass            = PassiveModel.klass
+klass            = MicroModel.klass
 
 describe "Collection", ->
   beforeEach ->

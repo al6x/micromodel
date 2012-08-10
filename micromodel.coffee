@@ -1,6 +1,6 @@
 # Module declarations.
 global = @
-PassiveModel = if exports? then exports else global.PassiveModel = {}
+MicroModel = if exports? then exports else global.MicroModel = {}
 _ = global._ || require 'underscore'
 
 # Making Underscore.js methods available directly on Collection.
@@ -9,7 +9,7 @@ underscoreMethods = ['forEach', 'each', 'map', 'reduce', 'reduceRight', 'find',
   'include', 'contains', 'invoke', 'max', 'min', 'sortBy', 'sortedIndex',
   'toArray', 'size', 'first', 'initial', 'rest', 'last', 'without', 'indexOf',
   'shuffle', 'lastIndexOf', 'isEmpty', 'groupBy'];
-PassiveModel.withUnderscoreCollection = (klass) ->
+MicroModel.withUnderscoreCollection = (klass) ->
   proto = klass.prototype
   # Mixing each Underscore method as a proxy to `Collection.models`.
   _.each underscoreMethods, (method) ->
@@ -17,12 +17,12 @@ PassiveModel.withUnderscoreCollection = (klass) ->
       _[method].apply _, [@models].concat _.toArray(arguments)
 
 # Integration with underscore's `_.isEqual`.
-PassiveModel.withUnderscoreEqual = (klass) ->
+MicroModel.withUnderscoreEqual = (klass) ->
   proto = klass.prototype
   proto.isEqual = proto.eql
 
 # Integration with EventEmitter.
-PassiveModel.withEventEmitter = (klass) ->
+MicroModel.withEventEmitter = (klass) ->
   proto = klass.prototype
   EventEmitter = global.EventEmitter || require('events').EventEmitter
 
@@ -37,7 +37,7 @@ PassiveModel.withEventEmitter = (klass) ->
   _(proto).extend methods
 
 # Integration with BackboneEvents.
-PassiveModel.withBackboneEvents = (klass) ->
+MicroModel.withBackboneEvents = (klass) ->
   proto = klass.prototype
   Events = global.Backbone.Events || require('backbone').Events
 
@@ -82,7 +82,7 @@ PassiveModel.withBackboneEvents = (klass) ->
 #         age     : Number
 #         enabled : (v) -> v == 'yes'
 #
-PassiveModel.withModel = (klass) ->
+MicroModel.withModel = (klass) ->
   proto = klass.prototype
 
   # Helper, get attributes as hash from.
@@ -141,7 +141,7 @@ PassiveModel.withModel = (klass) ->
         attrs = permited
 
       # Casting attributes to specified types.
-      attrs[name] = PassiveModel.cast(attrs[name], type) for name, type of @schema if @schema
+      attrs[name] = MicroModel.cast(attrs[name], type) for name, type of @schema if @schema
 
       # Validating attributes.
       return false if @validate(attrs) and options.validate != false
@@ -198,10 +198,10 @@ PassiveModel.withModel = (klass) ->
   _(proto).extend methods
 
   # Adding another mixins.
-  PassiveModel.withUnderscoreEqual klass
+  MicroModel.withUnderscoreEqual klass
 
 # Cast value to type, override it to provide more types.
-PassiveModel.cast = (value, type) ->
+MicroModel.cast = (value, type) ->
   if _.isFunction type then type value
   else if type == String then v.toString()
   else if type == Number
@@ -225,7 +225,7 @@ PassiveModel.cast = (value, type) ->
 # Collection can store models, automatically sort it with given order and
 # emit `add`, `change`, `delete` and `model:change`, `model:change:attr` events if
 # Events module provided.
-PassiveModel.withCollection = (klass) ->
+MicroModel.withCollection = (klass) ->
   proto = klass.prototype
 
   # Helper for proxying model events to collection listeners.
@@ -387,11 +387,11 @@ PassiveModel.withCollection = (klass) ->
   _(proto).extend methods
 
   # Adding another mixins.
-  PassiveModel.withUnderscoreCollection klass
-  PassiveModel.withUnderscoreEqual klass
+  MicroModel.withUnderscoreCollection klass
+  MicroModel.withUnderscoreEqual klass
 
 # Class helper.
-PassiveModel.klass = (args...) ->
+MicroModel.klass = (args...) ->
   name    = if _(args[0]).isString() then args.shift() else null
   methods = unless _(args[args.length - 1]).isFunction() then args.pop() else {}
   mixins  = args
@@ -411,5 +411,5 @@ PassiveModel.klass = (args...) ->
   klass
 
 # Default Model and Collection.
-PassiveModel.Model      = PassiveModel.klass 'Model', PassiveModel.withModel
-PassiveModel.Collection = PassiveModel.klass 'Collection', PassiveModel.withCollection
+MicroModel.Model      = MicroModel.klass 'Model', MicroModel.withModel
+MicroModel.Collection = MicroModel.klass 'Collection', MicroModel.withCollection

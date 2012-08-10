@@ -1,31 +1,28 @@
-global.p      = (args...) -> console.log args...
+global.p         = (args...) -> console.log args...
 
-expect        = require('chai').expect
-PassiveModel  = require '../passive-model'
-Model         = PassiveModel.Model
-EventEmitter  = require('events').EventEmitter
-_             = require 'underscore'
+expect           = require('chai').expect
+PassiveModel     = require '../passive-model'
+Model            = PassiveModel.Model
+withModel        = PassiveModel.withModel
+withEventEmitter = PassiveModel.withEventEmitter
+_                = require 'underscore'
+klass            = PassiveModel.klass
 
 describe "Model", ->
-  beforeEach ->
-    PassiveModel.dontUseEvents()
-
   it "should update attributes", ->
-    class Unit extends Model
-    unit = new Unit()
+    unit = new Model()
     expect(unit.attributes()).to.eql {}
     unit.set name: 'Probe'
     expect(unit.attributes()).to.eql name: 'Probe'
 
   it "should return attributes", ->
-    class Unit extends Model
-    unit = new Unit name: 'Probe', _cache: {}
+    unit = new Model name: 'Probe', _cache: {}
     expect(unit.attributes()).to.eql name: 'Probe'
 
   it "should check for equality", ->
-    class Unit extends Model
-    class Protoss extends Model
-    class Item extends Model
+    Unit = klass 'Unit', withModel
+    Protoss = klass 'Protoss', withModel
+    Item = klass 'Item', withModel
     unit1 = new Unit    name: 'Zeratul', items: [new Item(name: 'Psionic blades')]
     unit2 = new Protoss name: 'Zeratul', items: [new Item(name: 'Psionic blades')]
     expect(unit1.eql(unit2)).to.equal true
@@ -34,15 +31,14 @@ describe "Model", ->
     expect(unit1.eql(unit2)).to.equal false
 
   it "should compare with non models", ->
-    class Unit extends Model
-    unit = new Unit()
+    unit = new Model()
     expect(unit.eql(1)).to.equal false
     expect(unit.eql(null)).to.equal false
     expect(unit.eql({})).to.equal true
     expect(unit.eql(name: 'Probe')).to.equal false
 
   it "should validate", ->
-    class Unit extends Model
+    Unit = klass 'Unit', withModel,
       validate: (attrs = {}) ->
         errors = {}
         errors.name = ["can't be blank"] if /^\s*$/.test attrs.name
@@ -57,7 +53,7 @@ describe "Model", ->
     expect(unit.attributes()).to.eql name: ''
 
   it "should provide validation helper", ->
-    class Unit extends Model
+    Unit = klass 'Unit', withModel,
       validations:
         name: (v) -> "can't be blank" if /^\s*$/.test v
 
@@ -65,8 +61,7 @@ describe "Model", ->
     expect(unit.validate(name: '')).to.eql name: ["can't be blank"]
 
   it "should track attribute changes", ->
-    class Unit extends Model
-    unit = new Unit()
+    unit = new Model()
     expect(unit._changed).to.eql {}
     unit.set name: 'Probe'
     expect(unit._changed).to.eql {name: undefined}
@@ -74,27 +69,24 @@ describe "Model", ->
     expect(unit._changed).to.eql {name: 'Probe'}
 
   it "should not track changes if silent specified", ->
-    class Unit extends Model
-    unit = new Unit()
+    unit = new Model()
     expect(unit._changed).to.eql {}
     unit.set {name: 'Probe'}, silent: true
     expect(unit._changed).to.eql {}
 
   it "should not track the same value as attribute change", ->
-    class Unit extends Model
-    unit = new Unit()
+    unit = new Model()
     unit.set name: 'Probe', state: 'alive'
     unit.set name: 'Probe', state: 'dead'
     expect(unit._changed).to.eql {state: 'alive'}
 
   it "should set only permitted attributes", ->
-    class Unit extends Model
-    unit = new Unit()
+    unit = new Model()
     unit.set {name: 'Probe', state: 'alive'}, permit: ['name']
     expect(unit.attributes()).to.eql {name: 'Probe'}
 
   it "should cast attributes if specified", ->
-    class Unit extends Model
+    Unit = klass 'Unit', withModel,
       schema:
         health : Number
         alive  : (v) -> v == 'yes'
@@ -104,9 +96,7 @@ describe "Model", ->
     expect(unit.attributes()).to.eql name: 'Probe', health: 100, alive: true
 
   it "should emit change events", ->
-    PassiveModel.useEventEmitter EventEmitter
-
-    class Unit extends Model
+    Unit = klass 'Unit', withModel, withEventEmitter
     unit = new Unit()
     events = []
     unit.on 'change:name', -> events.push 'change:name'
@@ -116,8 +106,8 @@ describe "Model", ->
     expect(events).to.eql ['change:name', 'change:race', 'change']
 
   it "should convert to JSON", ->
-    class Unit extends Model
-    class Item extends Model
+    Unit = klass 'Unit', withModel
+    Item = klass 'Item', withModel
     unit = new Unit name: 'Zeratul', items: [new Item(name: 'Psionic blades')]
     expect(JSON.parse(JSON.stringify(unit))).to.eql
       name  : 'Zeratul'

@@ -1,6 +1,6 @@
 {
   "name"         : "passive-model",
-  "main"         : "./lib/passive-model",
+  "main"         : "./passive-model",
   "version"      : "0.1.2",
   "homepage"     : "http://alexeypetrushin.github.com/passive-model",
   "dependencies" : {

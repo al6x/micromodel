@@ -1,18 +1,18 @@
 global.p         = (args...) -> console.log args...
 
 expect           = require('chai').expect
-MicroModel     = require '../micromodel'
+MicroModel       = require '../micromodel'
 Model            = MicroModel.Model
 withModel        = MicroModel.withModel
 Collection       = MicroModel.Collection
 withCollection   = MicroModel.withCollection
 withEventEmitter = MicroModel.withEventEmitter
 _                = require 'underscore'
-klass            = MicroModel.klass
+Class            = MicroModel.Class
 
 describe "Collection", ->
   beforeEach ->
-    @Unit  = klass 'Unit', withModel, withEventEmitter
+    @Unit  = Class 'Unit', withModel, withEventEmitter
     @probe = new @Unit name: 'Probe', id: 'probe'
     @scv   = new @Unit name: 'SCV'
 
@@ -54,7 +54,7 @@ describe "Collection", ->
     expect(group.eql([])).to.equal false
 
   it "should emit add, delete and change events", ->
-    Units = klass 'Units', withCollection, withEventEmitter
+    Units = Class 'Units', withCollection, withEventEmitter
     group = new Units()
     events = []
     group.on 'add',    (model) -> events.push "add #{model.name}"
@@ -67,7 +67,7 @@ describe "Collection", ->
     expect(events).to.eql ['add Probe', 'change', 'add SCV', 'change', 'delete Probe', 'change']
 
   it "should proxy model events", ->
-    Units = klass 'Units', withCollection, withEventEmitter
+    Units = Class 'Units', withCollection, withEventEmitter
     group = new Units()
     events = []
     group.addListener 'model:change', (model) -> events.push "change #{model.name}"

@@ -1,12 +1,12 @@
 global.p         = (args...) -> console.log args...
 
 expect           = require('chai').expect
-MicroModel     = require '../micromodel'
+MicroModel       = require '../micromodel'
 Model            = MicroModel.Model
 withModel        = MicroModel.withModel
 withEventEmitter = MicroModel.withEventEmitter
 _                = require 'underscore'
-klass            = MicroModel.klass
+Class            = MicroModel.Class
 
 describe "Model", ->
   it "should update attributes", ->
@@ -20,9 +20,9 @@ describe "Model", ->
     expect(unit.attributes()).to.eql name: 'Probe'
 
   it "should check for equality", ->
-    Unit = klass 'Unit', withModel
-    Protoss = klass 'Protoss', withModel
-    Item = klass 'Item', withModel
+    Unit = Class 'Unit', withModel
+    Protoss = Class 'Protoss', withModel
+    Item = Class 'Item', withModel
     unit1 = new Unit    name: 'Zeratul', items: [new Item(name: 'Psionic blades')]
     unit2 = new Protoss name: 'Zeratul', items: [new Item(name: 'Psionic blades')]
     expect(unit1.eql(unit2)).to.equal true
@@ -38,7 +38,7 @@ describe "Model", ->
     expect(unit.eql(name: 'Probe')).to.equal false
 
   it "should validate", ->
-    Unit = klass 'Unit', withModel,
+    Unit = Class 'Unit', withModel,
       validate: (attrs = {}) ->
         errors = {}
         errors.name = ["can't be blank"] if /^\s*$/.test attrs.name
@@ -53,7 +53,7 @@ describe "Model", ->
     expect(unit.attributes()).to.eql name: ''
 
   it "should provide validation helper", ->
-    Unit = klass 'Unit', withModel,
+    Unit = Class 'Unit', withModel,
       validations:
         name: (v) -> "can't be blank" if /^\s*$/.test v
 
@@ -86,7 +86,7 @@ describe "Model", ->
     expect(unit.attributes()).to.eql {name: 'Probe'}
 
   it "should cast attributes if specified", ->
-    Unit = klass 'Unit', withModel,
+    Unit = Class 'Unit', withModel,
       schema:
         health : Number
         alive  : (v) -> v == 'yes'
@@ -96,7 +96,7 @@ describe "Model", ->
     expect(unit.attributes()).to.eql name: 'Probe', health: 100, alive: true
 
   it "should emit change events", ->
-    Unit = klass 'Unit', withModel, withEventEmitter
+    Unit = Class 'Unit', withModel, withEventEmitter
     unit = new Unit()
     events = []
     unit.on 'change:name', -> events.push 'change:name'
@@ -106,8 +106,8 @@ describe "Model", ->
     expect(events).to.eql ['change:name', 'change:race', 'change']
 
   it "should convert to JSON", ->
-    Unit = klass 'Unit', withModel
-    Item = klass 'Item', withModel
+    Unit = Class 'Unit', withModel
+    Item = Class 'Item', withModel
     unit = new Unit name: 'Zeratul', items: [new Item(name: 'Psionic blades')]
     expect(JSON.parse(JSON.stringify(unit))).to.eql
       name  : 'Zeratul'

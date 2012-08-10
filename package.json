@@ -11,6 +11,10 @@
   "author"       : {
     "name" : "Alexey Petrushin",
     "url"  : "http://petrush.in"
-  },
-  "license"      : "MIT"
+  }  ,
+  "license"      : "MIT",
+  "scripts" : {
+    "prepublish"  : "coffee --compile --output . .",
+    "postpublish" : "find . -name '*.js' | xargs rm -f"
+  }
 }

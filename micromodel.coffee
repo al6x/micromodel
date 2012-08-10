@@ -53,35 +53,24 @@ MicroModel.withBackboneEvents = (klass) ->
 
 # # Model
 #
-# Attributes stored as properties `model.name` but it shoud be setted only
+# Attributes stored and accessed as properties `model.name` but it shoud be setted only
 # via the `set` method - `model.set name: 'foo'`.
 #
-# Properties with `_` prefix have special meaning (like caching `model._cache`) and
-# ignored.
+# Properties with `_` prefix are ignored.
 #
 # By default model has no schema or attribute types, but it can be defined using `model.cast`
 # method.
 #
 # There are special property `model._changed` - it contains changes from the last `set` operation.
 #
-# Define validation rules using `model.validations` and `model.validate`, there are
-# also `isValid` method.
-#
-# Model can be serialized by usng `toHash` and `fromHash` methods.
+# Define validation rules using `model.validations` or `model.validate`, check validity of model
+# with `model.isValid()`.
 #
 # Use `model.on 'change', fn` to listen for `change` and `change:attrName` events.
 #
 # Specify `model.schema` to cast attributes to specified types.
 #
-# Example:
-#
-#     class User extends Model
-#       validations:
-#         name: (v) -> "can't be empty" if /^\s*$/.test v
-#       schema:
-#         age     : Number
-#         enabled : (v) -> v == 'yes'
-#
+# See /examples/basic for more details.
 MicroModel.withModel = (klass) ->
   proto = klass.prototype
 
@@ -123,7 +112,7 @@ MicroModel.withModel = (klass) ->
 
     # Set attributes of model, changed attributes will be available as `model._changed`.
     #
-    # If model uses events (see `useBackboneEvents` or `useEventEmitter`)
+    # If model uses events (see `withEventEmitter` or `withBackboneEvents`)
     # following events will be emitted `change:attr` and `change`.
     #
     # `silent: false` - to suppres events and `validate: false` to suppress validation.
@@ -224,7 +213,7 @@ MicroModel.cast = (value, type) ->
 #
 # Collection can store models, automatically sort it with given order and
 # emit `add`, `change`, `delete` and `model:change`, `model:change:attr` events if
-# Events module provided.
+# `withEventEmitter` module provided.
 MicroModel.withCollection = (klass) ->
   proto = klass.prototype
 
@@ -380,7 +369,7 @@ MicroModel.withCollection = (klass) ->
 
     equal: (other) -> @eql other, true
 
-  # Klass information.
+  # Class information.
   proto.isCollection = true
 
   # Adding methods.
@@ -391,7 +380,7 @@ MicroModel.withCollection = (klass) ->
   MicroModel.withUnderscoreEqual klass
 
 # Class helper.
-MicroModel.klass = (args...) ->
+MicroModel.Class = (args...) ->
   name    = if _(args[0]).isString() then args.shift() else null
   methods = unless _(args[args.length - 1]).isFunction() then args.pop() else {}
   mixins  = args
@@ -411,5 +400,5 @@ MicroModel.klass = (args...) ->
   klass
 
 # Default Model and Collection.
-MicroModel.Model      = MicroModel.klass 'Model', MicroModel.withModel
-MicroModel.Collection = MicroModel.klass 'Collection', MicroModel.withCollection
+MicroModel.Model      = MicroModel.Class 'Model', MicroModel.withModel
+MicroModel.Collection = MicroModel.Class 'Collection', MicroModel.withCollection

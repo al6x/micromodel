@@ -1,7 +1,7 @@
 {
   "name"         : "micromodel",
   "main"         : "./micromodel",
-  "version"      : "0.1.3",
+  "version"      : "0.2.0",
   "homepage"     : "http://alexeypetrushin.github.com/micromodel",
   "dependencies" : {
     "underscore" : "1.3.x"
@@ -11,7 +11,7 @@
   "author"       : {
     "name" : "Alexey Petrushin",
     "url"  : "http://petrush.in"
-  }  ,
+  },
   "license"      : "MIT",
   "scripts" : {
     "prepublish"  : "coffee -c micromodel.coffee",

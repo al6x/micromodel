@@ -1,0 +1,3 @@
+global._      = require 'underscore'
+global.p      = (args...) -> console.log args...
+global.expect = require('chai').expect

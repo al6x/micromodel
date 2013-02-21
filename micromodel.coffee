@@ -1,55 +1,16 @@
-# Module declarations.
-global = @
-MicroModel = if exports? then exports else global.MicroModel = {}
-_ = global._ || require 'underscore'
+# Model and Collection for working on both Client and Server sides. Uses [functional mixins](http://jslang.info/blog/functional-mixins).
 
-# Making Underscore.js methods available directly on Collection.
-underscoreMethods = ['forEach', 'each', 'map', 'reduce', 'reduceRight', 'find',
-  'detect', 'filter', 'select', 'reject', 'every', 'all', 'some', 'any',
-  'include', 'contains', 'invoke', 'max', 'min', 'sortBy', 'sortedIndex',
-  'toArray', 'size', 'first', 'initial', 'rest', 'last', 'without', 'indexOf',
-  'shuffle', 'lastIndexOf', 'isEmpty', 'groupBy'];
-MicroModel.withUnderscoreCollection = (klass) ->
-  proto = klass.prototype
-  # Mixing each Underscore method as a proxy to `Collection.models`.
-  _.each underscoreMethods, (method) ->
-    proto[method] = ->
-      _[method].apply _, [@models].concat _.toArray(arguments)
-
-# Integration with underscore's `_.isEqual`.
-MicroModel.withUnderscoreEqual = (klass) ->
-  proto = klass.prototype
-  proto.isEqual = proto.eql
-
-# Integration with EventEmitter.
-MicroModel.withEventEmitter = (klass) ->
-  proto = klass.prototype
-  EventEmitter = global.EventEmitter || require('events').EventEmitter
-
-  initializeWithoutEventEmitter = proto.initialize
-  methods =
-    initialize     : ->
-      EventEmitter.apply @
-      initializeWithoutEventEmitter.apply @, arguments
-
-  proto.isEventEmitter = true
-  _(proto).extend EventEmitter.prototype
-  _(proto).extend methods
-
-# Integration with BackboneEvents.
-MicroModel.withBackboneEvents = (klass) ->
-  proto = klass.prototype
-  Events = global.Backbone.Events || require('backbone').Events
-
-  # Making `Backbone.Events` looks like it's `EventEmitter`.
-  methods =
-    addListener    : -> @on.apply @, arguments
-    removeListener : -> @off.apply @, arguments
-    emit           : -> @trigger.apply @, arguments
-
-  proto.isEventEmitter = true
-  _(proto).extend Events
-  _(proto).extend methods
+# Support for both Browser and Node.js environments.
+if module?.exports?
+  exports = module.exports
+  _       = require('underscore')
+  requireEventEmitter = -> require('events').EventEmitter
+  requireBackboneEvents = -> require('backbone').Events
+else
+  exports = window
+  _       = window._ || require('underscore')
+  requireEventEmitter = -> window.EventEmitter || require('events').EventEmitter
+  requireBackboneEvents = -> global.Backbone?.Events || require('backbone').Events
 
 # # Model
 #
@@ -58,347 +19,385 @@ MicroModel.withBackboneEvents = (klass) ->
 #
 # Properties with `_` prefix are ignored.
 #
-# By default model has no schema or attribute types, but it can be defined using `model.cast`
-# method.
-#
-# There are special property `model._changed` - it contains changes from the last `set` operation.
-#
 # Define validation rules using `model.validations` or `model.validate`, check validity of model
 # with `model.isValid()`.
-#
-# Use `model.on 'change', fn` to listen for `change` and `change:attrName` events.
-#
-# Specify `model.schema` to cast attributes to specified types.
-#
-# See /examples/basic for more details.
-MicroModel.withModel = (klass) ->
-  proto = klass.prototype
-
-  # Helper, get attributes as hash from.
-  attributes = (obj) ->
-    attrs = {}
-    attrs[name] = value for own name, value of obj when not /^_/.test name
-    attrs
-
-  # Methods.
-  initializeWithoutModel = proto.initialize
-  methods =
-    # Initializing new model from `attrs` and `defaults` property.
-    initialize: (attrs, options) ->
-      initializeWithoutModel?.call @, attrs, options
-      [@_cid, @_changed] = [_.uniqueId('c'), {}]
-      @set @defaults, options if @defaults
-      @set attrs, options if attrs
-
-    # Equality check based on the content of model, deep.
-    eql: (other, strict = false) ->
-      return true if @ == other
-      return false unless other and @id == other.id and _.isObject(other)
-      if strict
-        return false unless @_cid == other._cid and @constructor == other.constructor
-
-      # Checking if atributes and size of objects are the same.
-      size = 0
-      for own name, value of @ when not /^_/.test name
-        size += 1
-        return false unless _.isEqual value, other[name]
-
-      otherSize = 0
-      otherSize += 1 for own name of other when not /^_/.test name
-
-      return size == otherSize
-
-    equal: (other) -> @eql other, true
-
-    # Set attributes of model, changed attributes will be available as `model._changed`.
-    #
-    # If model uses events (see `withEventEmitter` or `withBackboneEvents`)
-    # following events will be emitted `change:attr` and `change`.
-    #
-    # `silent: false` - to suppres events and `validate: false` to suppress validation.
-    # `permit: ['name', 'email'] - to set only permitted attributes.
-    set: (obj, options = {}) ->
-      return unless obj
-
-      # Selecting attributes only.
-      attrs = attributes obj
-
-      # Selecting only permited attributes.
-      if permit = options.permit
-        permited = {}
-        permited[name] = value for name, value of attrs when name in permit
-        attrs = permited
-
-      # Casting attributes to specified types.
-      attrs[name] = MicroModel.cast(attrs[name], type) for name, type of @schema if @schema
-
-      # Validating attributes.
-      return false if @validate(attrs) and options.validate != false
-
-      # Updating and tracking changes.
-      @_changed = {}
-      unless options.silent
-        for name, newValue of attrs
-          currentValue = @[name]
-          unless _.isEqual currentValue, newValue
-            @_changed[name] = currentValue
-            @[name]         = newValue
-      else
-        @[name] = newValue for name, newValue of attrs
-
-      # Emitting changes.
-      if @isEventEmitter and not options.silent and not _.isEmpty(@_changed)
-        @emit "change:#{name}", @ for name of @_changed
-        @emit 'change', @
-
-      true
-
-    # Shallow clone of model.
-    clone: -> new @constructor @attributes()
-
-    # Clear model.
-    clear: ->
-      delete @[name] for own name of @
-      @_changed = {}
-      @
-
-    # Validating attributes, returns `null` if attributes valid or any not null object as error.
-    validate: (attrs = {}) ->
-      return null unless @validations
-      errors = {}
-      for name, value of attrs
-        (errors[name] ?= []).push msg if msg = @validations[name]?(value)
-      if _.isEmpty(errors) then null else errors
-
-    # Define validation rules and store errors in `errors` property `@errors.add name: "can't be blank"`.
-    isValid: -> @validate @
-
-    attributes: -> attributes @
-
-    inspect: -> JSON.stringify @attributes()
-    toString: -> @inspect()
-
-    toJSON: -> @attributes()
-
-  # Adding klass information.
+attributeRe = /^_/
+exports.Model = (klass) ->
+  klass ?= exports.BaseClass()
+  proto =  klass.prototype
   proto.isModel = true
 
-  # Adding methods.
-  _(proto).extend methods
+  # Initializing model from `attrs` and `defaults` property.
+  proto.initialize = (attrs, options) ->
+    @set @defaults, options if @defaults
+    @set attrs, options if attrs
+    @
 
-  # Adding another mixins.
-  MicroModel.withUnderscoreEqual klass
+  # Equality check based on the content, deep.
+  proto.isEqual = (other) -> # , strict = false
+    return true if @ == other
+    return false unless other and @id == other.id and other.isModel
 
-# Cast value to type, override it to provide more types.
-MicroModel.cast = (value, type) ->
-  if _.isFunction type then type value
-  else if type == String then v.toString()
-  else if type == Number
-    if _.isNumber(v) then v
-    else if _.isString v
-      tmp = parseInt v
-      tmp if _.isNumber tmp
-  else if type == Boolean
-    if _.isBoolean v then v
-    else if _.isString v then v == 'true'
-  else if type == Date
-    if _.isDate v then v
-    else if _.isString v
-      tmp = new Date v
-      tmp if _.isDate tmp
-  else
-    throw "can't cast to unknown type (#{type})!"
+    # Checking if atributes and size of models are the same.
+    size = 0
+    for own name, value of @ when not attributeRe.test name
+      size += 1
+      return false unless _.isEqual value, other[name]
 
-# # Collection of models.
+    otherSize = 0
+    otherSize += 1 for own name of other when not attributeRe.test name
+
+    return size == otherSize
+
+  # Set attributes.
+  proto.set = (attrs, options) ->
+    return {} unless attrs?
+
+    changes = {}
+    for own name, newValue of attrs when not attributeRe.test name
+      # Tracking changes.
+      oldValue = @[name]
+      changes[name] = oldValue unless _.isEqual oldValue, newValue
+
+      # Updating.
+      @[name] = newValue
+    changes
+
+  # Shallow clone.
+  proto.clone = -> new @constructor @attributes()
+
+  # Clear attributes.
+  proto.clear = (options) ->
+    changes = attributes()
+    delete @[name] for own name of @
+    changes
+
+  # Validating attributes, returns `null` if attributes valid or any not null object as error.
+  proto.validate = ->
+    return null unless @validations
+    errors = {}
+    for own name, validator of @validations
+      (errors[name] ?= []).push msg if msg = validator @[name]
+    if _.isEmpty errors then null else errors
+
+  # Define validation rules and store errors in `errors` property `@errors.add name: "can't be blank"`.
+  proto.isValid = -> not @validate()?
+
+  proto.attributes = ->
+    attrs = {}
+    attrs[name] = value for own name, value of @ when not attributeRe.test name
+    attrs
+
+  proto.toJSON = -> @attributes()
+
+  proto.inspect = -> JSON.stringify @toJSON()
+  proto.toString = -> @inspect()
+
+  klass
+
+# Adding 'change' and `change:attr` events, supply `silent: true`  option to suppress it.
+exports.Model.Events = (klass, type) ->
+  exports.Events klass, type
+  proto = klass.prototype
+
+  # Adding events to `set` method.
+  proto.setWithoutEvents = proto.set
+  proto.set = (attrs, options) ->
+    changes = @setWithoutEvents attrs, options
+    @_emitChanges changes, options
+    changes
+
+  # Adding events to `clear` method.
+  proto.clearWithoutEvents = proto.clear
+  proto.clear = (options) ->
+    changes = @clearWithoutEvents options
+    @_emitChanges changes, options
+    changes
+
+  # Emitt changes.
+  proto._emitChanges = (changes, options) ->
+    unless _.isEmpty(changes) and not options?.silent
+      @trigger "change:#{name}", @, oldValue for name, oldValue of changes
+      @trigger 'change', @, changes
+
+  klass
+
+# # Collection.
 #
-# Collection can store models, automatically sort it with given order and
-# emit `add`, `change`, `delete` and `model:change`, `model:change:attr` events if
-# `withEventEmitter` module provided.
-MicroModel.withCollection = (klass) ->
+# Collection store models.
+exports.Collection = (klass) ->
+  klass ?= exports.BaseClass()
+  proto =  klass.prototype
+  proto.isCollection = true
+
+  # Initialize collection, You may provide array of objects or models and options.
+  proto.initialize = (args...) ->
+    [@models, @length, @ids] = [[], 0, {}]
+    @add args...
+    @
+
+  # Add model or models.
+  proto.add = (args...) ->
+    [models, options] = if _.isArray args[0] then args else [args, {}]
+    options ?= {}
+    @_add models, options
+
+  proto._add = (models, options) ->
+    # Adding to collection.
+    added = []
+    for model in models
+      # Transforming objects to model if it isn't.
+      unless model.isModel
+        klass = @model || throw new Error "no Model for Collection (#{@})!"
+        model = new klass model
+
+      # Requiring id presence.
+      throw new Error "no id for Model (#{model})!" unless model.id?
+
+      # Model can be added only once, ignoring if it tried to be added twice.
+      continue if model.id of @ids
+
+      @ids[model.id] = @models.length
+      @models.push model
+      added.push model
+    @length = @models.length
+    added
+
+  # Delete model or models.
+  proto.delete = (args...) ->
+    [models, options] = if _.isArray args[0] then args else [args, {}]
+    options ?= {}
+    @_delete models, options
+  proto.del = (args...) -> @delete args...
+
+  proto._delete = (models, options) ->
+    # Marking models for delete.
+    [deleted, deletedIndexes] = [[], {}]
+    # Ignoring objects that aren't in collection.
+    for model in models when model.id of @ids
+      deleted.push model
+      deletedIndexes[@ids[model.id]] = true
+
+    # Deleting.
+    unless _.isEmpty deletedIndexes
+      oldModels = @models
+      [@models, @ids] = [[], {}]
+      @models.push model for model, index in oldModels when index not of deletedIndexes
+      @ids[model.id] = index for model, index in @models
+
+    @length = @models.length
+    deleted
+
+  # Get model by id.
+  proto.get = (id) -> if (index = @ids[id])? then @models[index]
+
+  proto.has = (id) -> id of @ids
+
+  # Get model by index.
+  proto.at = (index) -> @models[index]
+
+  # Clear collection.
+  proto.clear = (options = {}) ->
+    deleted = @models
+    [@models, @length, @ids] = [[], 0, {}]
+    deleted
+
+  proto.inspect = -> JSON.stringify @toJSON()
+  proto.toString = -> @inspect()
+
+  proto.toJSON = -> @models
+
+  # Equality check based on content, deep.
+  proto.isEqual = (other) ->
+    return true if @ == other
+    return false unless other and other.length == @length and other.isCollection
+    for model, index in @models
+      return false unless model.isEqual other.at(index)
+    true
+
+  # Making Underscore.js methods available directly on Collection.
+  underscoreMethodsReturningCollection = [
+    'forEach', 'each', 'map', 'filter', 'select', 'reject',
+    'every', 'all', 'some', 'any', 'sortBy', 'toArray', 'rest', 'without',
+    'shuffle'];
+
+  for method in underscoreMethodsReturningCollection
+    do (method) ->
+      proto[method] = ->
+        list = _[method].apply _, @models, arguments...
+        new @constructor list
+
+  underscoreMethods = [
+    'reduce', 'reduceRight', 'find', 'detect',
+    'include', 'contains', 'invoke', 'max', 'min', 'sortedIndex',
+    'size', 'first', 'initial', 'last', 'indexOf',
+    'lastIndexOf', 'isEmpty', 'groupBy', 'countBy'];
+
+  for method in underscoreMethods
+    do (method) ->
+      proto[method] = ->
+        _[method].apply _, @models, arguments...
+
+  klass
+
+# Sorted Collection.
+exports.Collection.Sorted = (klass) ->
+  proto = klass.prototype
+  proto.isSortedCollection = true
+
+  # Sorted mixin should be applied before Events, checking for that.
+  throw new Error "Sorted mixin should be applied before Events!" if proto.hasEvents
+
+  # Define comparator and collection always will be automatically sorted.
+  proto.sort = (options) -> @_sort options
+
+  proto._sort = (options) ->
+    @comparator = options.comparator if options?.comparator?
+    return false unless @comparator
+
+    # Sorting.
+    if @comparator.length == 1 then @models = _(@models).sortBy @comparator
+    else @models.sort @comparator
+
+    # Updating ids.
+    changed = false
+    for model, index in @models
+      changed = true if @ids[model.id] != index
+      @ids[model.id] = index
+    changed
+
+  # Adding support for sorting in `add` method.
+  proto._addWithoutSort = proto._add
+  proto._add = (models, options) ->
+    added = @_addWithoutSort models, options
+
+    # Sorting.
+    if added.length > 0 then @_sort options
+    else if options?.comparator? then @comparator = options.comparator
+    added
+
+  klass
+
+# Collection with events, emit `add`, `delete`, `change` and `model:change`
+# events.
+exports.Collection.Events = (klass, type) ->
+  exports.Events klass, type
   proto = klass.prototype
 
   # Helper for proxying model events to collection listeners.
-  _proxyModelEvent = (model) -> @emit 'model:change', model, @
+  proto.initializeWithoutEvents = proto.initialize
+  proto.initialize = (args...) ->
+    @_forwardModelChangeEvent = (model, changes) => @trigger 'model:change', model, changes, @
+    @initializeWithoutEvents args...
 
-  # Methods.
-  initializeWithoutCollection = proto.initialize
-  methods =
-    # Initialize collection, You may provide array of models and options.
-    initialize: (models, options = {}) ->
-      initializeWithoutCollection?.call @, models, options
-      @_proxyModelEvent = _proxyModelEvent.bind @
-      [@models, @length, @ids, @cids] = [[], 0, {}, {}]
-      @comparator = options.comparator
-      @add models, options if models
+  # Adding events for `sort` method.
+  if proto.sort?
+    proto.sortWithoutEvents = proto.sort
+    proto.sort = (options) ->
+      changed = @sortWithoutEvents options
+      @trigger 'change', @ if changed and not options?.silent
+      changed
 
-    # Define comparator and collection always will be automatically sorted.
-    sort: (options) ->
-      @comparator = options.comparator if options.comparator
-      throw "no comparator!" unless @comparator
+  # Adding events for `add` method.
+  proto._addWithoutEvents = proto._add
+  proto._add = (models, options) ->
+    added = @_addWithoutEvents models, options
+    @_emitAddChanges added, options
+    added
 
-      # Sorting.
-      if @comparator.length == 1
-        @models = _(@models).sortBy @comparator
-      else
-        @models.sort @comparator
+  # Adding events for `delete` method.
+  proto._deleteWithoutEvents = proto._delete
+  proto._delete = (models, options) ->
+    deleted = @_deleteWithoutEvents models, options
+    @_emitDeleteChanges deleted, options
+    deleted
 
-      # Emitting changes.
-      @emit 'change', @ if @isEventEmitter and options.silent != true
-      @
+  # Adding events for `clear` method.
+  proto.clearWithoutEvents = proto._delete
+  proto.clear = (options) ->
+    deleted = @clearWithoutEvents options
+    @_emitDeleteChanges deleted, options
+    deleted
 
-    # Add model or models, `add` and `change` events will be triggered.
-    add: (args...) ->
-      if _.isArray args[0]
-        [models, options] = args
-      else
-        lastArgument = args[args.length - 1]
-        options = unless lastArgument.isModel then args.pop() else {}
-        models = args
-      options ?= {}
-      return unless models.length > 0
+  # Emit changes.
+  proto._emitAddChanges = (added, options) ->
+    # Forwarding model change event.
+    model.on 'change', @_forwardModelChangeEvent for model in added when model.hasEvents
 
-      # Transforming object to model if it isn't.
-      tmp = models
-      models = []
-      for model in tmp
-        unless model.isModel
-          klass = @model || throw "no Model class for Collection (#{@})!"
-          model = new klass model
-        models.push model
+    # Emitting events.
+    if (added.length > 0) and not options?.silent
+      @trigger 'add', model, @ for model in added
+      @trigger 'change', @
 
-      # Adding to collection.
-      added = []
-      for model in models
-        # Model can be added only once, ignoring if it tried to be added twice.
-        continue if (model.id of @ids) or (model._cid of @cids)
-        @ids[model.id] = model
-        @cids[model._cid] = model
-        @models.push model
-        added.push model
-      @length = @models.length
+  proto._emitDeleteChanges = (deleted, options) ->
+    # Removing forwarding model change event.
+    model.off 'change', @_forwardModelChangeEvent for model in deleted when model.hasEvents
 
-      # Proxing model events.
-      if @isEventEmitter and model.isEventEmitter
-        model.addListener 'change', @_proxyModelEvent for model in added
+    # Emitting events.
+    if (deleted.length > 0) and not options?.silent
+      @trigger 'delete', model, @ for model in deleted
+      @trigger 'change', @
 
-      # Sorting.
-      @sort silent: true if @comparator
-
-      # Emitting events.
-      if @isEventEmitter and not options.silent and added.length > 0
-        @emit 'add', model, @ for model in added
-        @emit 'change', @
-      @
-
-    # Delete model or models, `delete` and `change` events will be emitted.
-    delete: (args...) ->
-      if _.isArray args[0]
-        [models, options] = args
-      else
-        lastArgument = args[args.length - 1]
-        options = unless lastArgument.isModel then args.pop() else {}
-        models = args
-      options ?= {}
-      return unless models.length > 0
-
-      # Deleting
-      deleted = []
-      for model in models
-        # Ignoring models that aren't in collection.
-        continue unless (model.id of @ids) or (model._cid of @cids)
-        index = @models.indexOf model
-        delete @ids[model.id]
-        delete @cids[model._cid]
-        @models.splice index, 1
-        deleted.push model
-      @length = @models.length
-
-      # Removing model events proxy.
-      if @isEventEmitter and model.isEventEmitter
-        model.removeListener 'change', @_proxyModelEvent for model in deleted
-
-      # Emitting events.
-      if @isEventEmitter and not options.silent and deleted.length > 0
-        @emit 'delete', model, @ for model in deleted
-        @emit 'change', @
-      @
-
-    # Get model by id.
-    get: (id) -> @ids[id] || @cids[id]
-
-    has: (id) -> (id of @ids) or (id of @cids)
-
-    # Get model by index.
-    at: (index) -> @models[index]
-
-    # Clear collection, `delete` and `change` events will be triggered.
-    clear: (options = {}) ->
-      # Deleting
-      deleted = @models
-      [@models, @length, @ids, @cids] = [[], 0, {}, {}]
-
-      # Removing model events proxy.
-      if @isEventEmitter and model.isEventEmitter
-        model.removeListener 'change', @_proxyModelEvent for model in deleted
-
-      # Emitting events.
-      if @isEventEmitter and not options.silent and deleted.length > 0
-        @emit 'delete', model, @ for model in deleted
-        @emit 'change', @
-      @
-
-    # Reset collection with new models.
-    reset: (args...) ->
-      @clear()
-      @add args...
-
-    inspect: -> JSON.stringify @models
-    toString: -> @inspect()
-
-    toJSON: -> @models
-
-    # Equality check based on list of models.
-    eql: (other, strict = false) ->
-      return true if @ == other
-      return false unless other and other.length == @length and other.models
-      if strict
-        return false unless other and @constructor == other.constructor
-      for model, index in @models
-        return false unless model.eql other.models[index], strict
-      true
-
-    equal: (other) -> @eql other, true
-
-  # Class information.
-  proto.isCollection = true
-
-  # Adding methods.
-  _(proto).extend methods
-
-  # Adding another mixins.
-  MicroModel.withUnderscoreCollection klass
-  MicroModel.withUnderscoreEqual klass
-
-# Class helper.
-MicroModel.Class = (args...) ->
-  name    = if _(args[0]).isString() then args.shift() else null
-  methods = unless _(args[args.length - 1]).isFunction() then args.pop() else {}
-  mixins  = args
-
-  # Creating empty class.
-  klass = -> @initialize?.apply @, arguments
-  proto = klass.prototype
-
-  # Adding name to class and special property to check if object is instance of this class.
-  if name
-    klass.name = name
-    proto["is#{name}"] = true
-
-  # Adding mixings and methods.
-  mixin klass for mixin in mixins
-  _(proto).extend methods
   klass
 
-# Default Model and Collection.
-MicroModel.Model      = MicroModel.Class 'Model', MicroModel.withModel
-MicroModel.Collection = MicroModel.Class 'Collection', MicroModel.withCollection
+# # Utilities.
+
+# Events.
+exports.Events = (klass, type='EventEmitter') ->
+  proto = klass.prototype
+  proto.hasEvents = true
+
+  # Integration with EventEmitter.
+  if type == 'EventEmitter'
+    EventEmitter = requireEventEmitter()
+
+    _(proto).extend EventEmitter.prototype
+
+    # Adding initialization.
+    initializeWithoutEventEmitter = proto.initialize
+    proto.initialize = ->
+      EventEmitter.apply @
+      initializeWithoutEventEmitter.apply @, arguments
+
+    # Adding shortcuts.
+    proto.on      = -> @addListener.apply @, arguments
+    proto.off     = -> @removeListener.apply @, arguments
+    proto.trigger = -> @emit.apply @, arguments
+
+  # Integration with BackboneEvents.
+  else if type == 'Backbone.Events'
+    _(proto).extend requireBackboneEvents()
+  else throw new Error "unknown type #{type}"
+
+  klass
+
+# Base class.
+exports.BaseClass = -> -> @initialize?.apply(@, arguments); @
+
+# Base Model and Collection.
+exports.BaseModel      = exports.Model()
+exports.BaseCollection = exports.Collection()
+
+# Full Model and Collection.
+exports.FullModel      = exports.Model.Events exports.Model()
+exports.FullCollection = exports.Collection.Events exports.Collection.Sorted exports.Collection()
+
+# Cast value to type, override it to provide more types.
+# MicroModel.cast = (value, type) ->
+#   if _.isFunction type then type value
+#   else if type == String then v.toString()
+#   else if type == Number
+#     if _.isNumber(v) then v
+#     else if _.isString v
+#       tmp = parseInt v
+#       tmp if _.isNumber tmp
+#   else if type == Boolean
+#     if _.isBoolean v then v
+#     else if _.isString v then v == 'true'
+#   else if type == Date
+#     if _.isDate v then v
+#     else if _.isString v
+#       tmp = new Date v
+#       tmp if _.isDate tmp
+#   else
+#     throw "can't cast to unknown type (#{type})!"

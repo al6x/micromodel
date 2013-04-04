@@ -93,6 +93,8 @@ exports.Model = (klass) ->
   proto.inspect = -> JSON.stringify @toJSON()
   proto.toString = -> @inspect()
 
+  proto.cid = -> @_cid = _.uniqueId()
+
   klass
 
 # Adding 'change' and `change:attr` events, supply `silent: true`  option to suppress it.

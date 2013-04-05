@@ -1,98 +1,90 @@
 require './helper'
 
-{BaseModel, Model, FullModel} = require '../micromodel'
+Model = require '../model'
 
 describe "Model", ->
+  [Unit, Item] = [null, null]
+  beforeEach ->
+    class Unit extends Model
+    class Item extends Model
+
   it "should update attributes", ->
-    unit = new BaseModel()
+    unit = new Unit()
     expect(unit.attributes()).to.eql {}
     unit.set name: 'Probe'
     expect(unit.attributes()).to.eql name: 'Probe'
 
   it "should return attributes", ->
-    unit = new BaseModel name: 'Probe', _cache: {}
+    unit = new Unit name: 'Probe', _cache: {}
     expect(unit.attributes()).to.eql name: 'Probe'
 
   it "should check for equality", ->
-    unit1 = new BaseModel name: 'Zeratul', items: [new BaseModel(name: 'Psionic blades')]
-    unit2 = new BaseModel name: 'Zeratul', items: [new BaseModel(name: 'Psionic blades')]
+    unit1 = new Unit name: 'Zeratul', items: [new Item(name: 'Psionic blades')]
+    unit2 = new Unit name: 'Zeratul', items: [new Item(name: 'Psionic blades')]
     expect(unit1.isEqual(unit2)).to.equal true
     unit1.items[0].name = 'Power suit'
     expect(unit1.isEqual(unit2)).to.equal false
 
   it "should compare with non models", ->
-    unit = new BaseModel()
+    unit = new Unit()
     expect(unit.isEqual(1)).to.equal false
     expect(unit.isEqual(null)).to.equal false
     expect(unit.isEqual({})).to.equal false
     expect(unit.isEqual(name: 'Probe')).to.equal false
 
   it "should validate", ->
-    Unit = Model()
-    Unit.prototype.validate = ->
-      errors = {}
-      errors.name = ["can't be blank"] if not @name? or /^\s*$/.test(@name)
-      if _(errors).isEmpty() then null else errors
+    Unit::validate = ->
+      @errors.name = ["can't be blank"] if not @name? or /^\s*$/.test(@name)
 
     unit = new Unit()
-    expect(unit.validate()).to.eql name: ["can't be blank"]
     expect(unit.isValid()).to.eql false
+    expect(unit.errors).to.eql name: ["can't be blank"]
 
     unit.set name: 'Probe'
-    expect(unit.validate()).to.equal null
     expect(unit.isValid()).to.eql true
+    expect(unit.errors).to.eql {}
 
   it "should provide validation helper", ->
-    Unit = Model()
-    Unit.prototype.validations =
+    Unit.validations =
       name: (v) -> "can't be blank" if not v? or /^\s*$/.test(v)
 
     unit = new Unit()
-    expect(unit.validate()).to.eql name: ["can't be blank"]
+    expect(unit.isValid()).to.eql false
+    expect(unit.errors).to.eql name: ["can't be blank"]
 
   it "should convert to JSON", ->
-    unit = new BaseModel name: 'Zeratul', items: [new BaseModel(name: 'Psionic blades')]
-    expect(unit.toJSON()).to.eql
+    Unit::toJson = ->
+      data = super()
+      data.items = data.items.map (item) -> item.toJson()
+      data
+    unit = new Unit name: 'Zeratul', items: [new Item(name: 'Psionic blades')]
+    expect(unit.toJson()).to.eql
       name  : 'Zeratul'
       items : [name: 'Psionic blades']
 
   it "should track attribute changes", ->
-    unit = new BaseModel()
+    unit = new Unit()
     expect(unit.set(name: 'Probe')).to.eql {name: undefined}
     expect(unit.set(name: 'SCV')).to.eql {name: 'Probe'}
 
   it "should not track the same value as attribute change", ->
-    unit = new BaseModel()
+    unit = new Unit()
     expect(unit.set(name: 'Probe')).to.eql {name: undefined}
     expect(unit.set(name: 'Probe')).to.eql {}
 
-  describe "Events", ->
+  it "should cast attributes to specified types", ->
+    Unit.types
+      health : Number
+      alive  : (v) -> v == 'yes'
 
-    it "should emit change events", ->
-      unit = new FullModel(name: '', race: '')
-      events = []
-      unit.on 'change:name', (args...) -> events.push 'change:name', args...
-      unit.on 'change:race', (args...) -> events.push 'change:race', args...
-      unit.on 'change', (args...) -> events.push 'change', args...
-      unit.set name: 'Probe', race: 'Protoss'
-      unit.set name: 'Probe'
-      expect(events).to.eql [
-        'change:name', unit, '',
-        'change:race', unit, '',
-        'change', unit, {name: '', race: ''},
-      ]
+    unit = new Unit name: 'Probe'
+    unit.castAndSet health: '100', alive: 'yes'
+    expect(unit.attributes()).to.eql name: 'Probe', health: 100, alive: true
 
-  # it "should set only permitted attributes", ->
-  #   unit = new BaseModel()
-  #   unit.set {name: 'Probe', state: 'alive'}, permit: ['name']
-  #   expect(unit.attributes()).to.eql {name: 'Probe'}
+  it "should set only permitted attributes", ->
+    Unit.types
+      health : Number
 
-  # it "should cast attributes if specified", ->
-  #   Unit = Class 'Unit', withModel,
-  #     schema:
-  #       health : Number
-  #       alive  : (v) -> v == 'yes'
-  #
-  #   unit = new Unit()
-  #   unit.set name: 'Probe', health: '100', alive: 'yes'
-  #   expect(unit.attributes()).to.eql name: 'Probe', health: 100, alive: true
+    unit = new Unit name: 'Probe'
+    unit.castAndSet health: '100', alive: 'yes'
+    expect(unit.attributes()).to.eql name: 'Probe', health: 100

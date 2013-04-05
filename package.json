@@ -15,7 +15,7 @@
   },
   "license"      : "MIT",
   "scripts" : {
-    "prepublish"  : "coffee -c micromodel.coffee",
-    "postpublish" : "rm micromodel.js"
+    "prepublish"  : "coffee -c model.coffee mongodb.coffee",
+    "postpublish" : "rm model.js mongodb.js"
   }
 }

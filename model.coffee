@@ -19,10 +19,16 @@ class Model
 
   isModel: true
 
+  # Defaults.
+  defineClassInheritableAccessor @, '_defaults', {}
+  @defaults: (attrs) ->
+    if attrs then @_defaults()[name] = value for name, value of attrs
+    else @_defaults()
+
   # Initializing model from `attrs` and `defaults` property.
   constructor: (attrs, options) ->
     @errors = {}
-    @set @defaults, options if @defaults
+    @set defaults, options unless _.isEmpty(defaults = @constructor.defaults())
     @set attrs, options if attrs
     @
 
@@ -47,6 +53,7 @@ class Model
   # Set attributes.
   set: (attrs, options) ->
     return {} unless attrs?
+    return @castAndSet attrs, options if options and options.cast
 
     # Parsing attributes.
     attrs = @parse attrs if @parse
@@ -70,13 +77,18 @@ class Model
     delete @[name] for own name of @
     changes
 
+  # Validations.
+  defineClassInheritableAccessor @, '_validations', {}
+  @validations: (validations) ->
+    if validations then @_validations()[name] = validator for name, validator of validations
+    else @_validations()
+
   # Define validation rules using `model.validations` or `model.validate`, check validity of model
   # with `model.isValid()`.
   #
   # Validating attributes, returns `null` if attributes valid or any not null object as error.
   validate: ->
-    return null unless validations = @constructor.validations
-    for own name, validator of validations
+    for own name, validator of @constructor.validations()
       (@errors[name] ?= []).push msg if msg = validator @[name]
 
   # Define validation rules and store errors in `errors` property `@errors.add name: "can't be blank"`.
@@ -129,13 +141,18 @@ class Model
 
   # Schema used for attribute casting.
   defineClassInheritableAccessor @, '_types', {}
-  @types: (types) -> @_types()[name] = type for name, type of types
+  @types: (types) ->
+    if types then @_types()[name] = type for name, type of types
+    else @_types()
 
   # Cast attributes to types and set.
   castAndSet: (attrs, options) ->
     casted = {}
-    for name, type of @constructor._types() when name of attrs
+    for name, type of @constructor.types() when name of attrs
       casted[name] = Model.cast attrs[name], type
+    if options and options.cast
+      options = _(options).clone()
+      delete options.cast
     @set casted, options
 
 # Exporting.

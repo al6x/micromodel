@@ -14,6 +14,12 @@ describe "Model", ->
     unit.set name: 'Probe'
     expect(unit.attributes()).to.eql name: 'Probe'
 
+  it "should use defaults", ->
+    Unit.defaults
+      alive: true
+    unit = new Unit(name: 'Probe')
+    expect(unit.attributes()).to.eql {alive: true, name: 'Probe'}
+
   it "should return attributes", ->
     unit = new Unit name: 'Probe', _cache: {}
     expect(unit.attributes()).to.eql name: 'Probe'
@@ -45,7 +51,7 @@ describe "Model", ->
     expect(unit.errors).to.eql {}
 
   it "should provide validation helper", ->
-    Unit.validations =
+    Unit.validations
       name: (v) -> "can't be blank" if not v? or /^\s*$/.test(v)
 
     unit = new Unit()

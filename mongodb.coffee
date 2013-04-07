@@ -34,9 +34,11 @@ sync Cursor::, 'toArray', 'count'
 module.exports.ModelPersistence = (Model) ->
   extractCustomOptions = (options) ->
     options = _(options).clone()
+    originalId = options.originalId
+    delete options.originalId
     bang = options.bang
     delete options.bang
-    [options, {bang: bang}]
+    [options, {bang: bang, originalId: originalId}]
 
   handleSomeErrors = (model, fn) ->
     try
@@ -88,12 +90,13 @@ module.exports.ModelPersistence = (Model) ->
     result || fail()
 
   Model::update = (options = {}) ->
-    [options, {bang}] = extractCustomOptions options
+    [options, {bang, originalId}] = extractCustomOptions options
     fail = -> if bang then throw new Error "can't update invalid model '#{@}'!" else false
 
     return fail() unless @isValid()
     result = handleSomeErrors @, =>
-      @collection().update {id: @id}, @toJson(), options
+      # In case of id change using original id.
+      @collection().update {id: (originalId || @id)}, @toJson(), options
     result || fail()
 
   Model::delete = (options = {}) ->

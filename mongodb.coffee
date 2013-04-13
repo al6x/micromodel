@@ -65,7 +65,8 @@ module.exports.ModelPersistence = (Model) ->
 
     data = @collection().findOne(selector, options)
     if data then new @ data
-    else if bang then throw new Error "document '#{selector}', '#{options}' not found!"
+    else if bang
+      throw new Error "document '#{inspect selector}', '#{inspect options}' not found!"
     else null
 
   Model.all = (selector = {}, options = {}) ->
@@ -103,3 +104,5 @@ module.exports.ModelPersistence = (Model) ->
     @collection().remove {id: @id}, options
 
   Model::refresh = (options = {}) -> @set @collection().findOne({id: @id}, options)
+
+inspect = (obj) -> JSON.stringify obj

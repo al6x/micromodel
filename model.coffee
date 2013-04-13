@@ -28,7 +28,7 @@ class Model
   # Initializing model from `attrs` and `defaults` property.
   constructor: (attrs, options) ->
     @errors = {}
-    @set defaults, options unless _.isEmpty(defaults = @constructor.defaults())
+    @set _(defaults).clone() unless _.isEmpty(defaults = @constructor.defaults())
     @set attrs, options if attrs
     @
 

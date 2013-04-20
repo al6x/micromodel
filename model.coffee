@@ -89,7 +89,7 @@ class Model
   # Validating attributes, returns `null` if attributes valid or any not null object as error.
   validate: ->
     for own name, validator of @constructor.validations()
-      (@errors[name] ?= []).push msg if msg = validator @[name]
+      (@errors[name] ?= []).push msg if msg = validator.call(@, @[name])
 
   # Define validation rules and store errors in `errors` property `@errors.add name: "can't be blank"`.
   isValid: ->

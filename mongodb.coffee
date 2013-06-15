@@ -26,20 +26,12 @@ Db::clear = (callback) ->
 
 # Synchronising.
 sync MongoClient, 'connect'
-sync Db::, 'collection', 'clear'
+sync Db::, 'collection', 'clear', 'eval'
 sync Collection::, 'insert', 'findOne', 'count', 'remove', 'update', 'ensureIndex', 'indexes', 'drop'
 sync Cursor::, 'toArray', 'count'
 
 # MongoDB persistence for Model.
 module.exports.ModelPersistence = (Model) ->
-  extractCustomOptions = (options) ->
-    options = _(options).clone()
-    originalId = options.originalId
-    delete options.originalId
-    bang = options.bang
-    delete options.bang
-    [options, {bang: bang, originalId: originalId}]
-
   handleSomeErrors = (model, fn) ->
     try
       fn()
@@ -61,13 +53,8 @@ module.exports.ModelPersistence = (Model) ->
   Model::collection = -> @constructor.collection()
 
   Model.first = (selector = {}, options = {}) ->
-    [options, {bang}] = extractCustomOptions options
-
     data = @collection().findOne(selector, options)
-    if data then new @ data
-    else if bang
-      throw new Error "document '#{inspect selector}', '#{inspect options}' not found!"
-    else null
+    if data then new @ data else null
 
   Model.all = (selector = {}, options = {}) ->
     @collection().find(selector, options).toArray().map (o) => new @(o)
@@ -82,23 +69,19 @@ module.exports.ModelPersistence = (Model) ->
     model
 
   Model::create = (options = {}) ->
-    [options, {bang}] = extractCustomOptions options
-    fail = -> if bang then throw new Error "can't create invalid model '#{@}'!" else false
-
-    return fail() unless @isValid()
-    result = handleSomeErrors @, =>
+    return false unless @isValid()
+    handleSomeErrors @, =>
       @collection().insert @toJson(), options
-    result || fail()
 
   Model::update = (options = {}) ->
-    [options, {bang, originalId}] = extractCustomOptions options
-    fail = -> if bang then throw new Error "can't update invalid model '#{@}'!" else false
+    options = _(options).clone()
+    originalId = options.originalId
+    delete options.originalId
 
-    return fail() unless @isValid()
-    result = handleSomeErrors @, =>
+    return false unless @isValid()
+    handleSomeErrors @, =>
       # In case of id change using original id.
       @collection().update {id: (originalId || @id)}, @toJson(), options
-    result || fail()
 
   Model::delete = (options = {}) ->
     @collection().remove {id: @id}, options

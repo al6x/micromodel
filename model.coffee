@@ -99,6 +99,10 @@ class Model
 
   hasErrors: -> !_(@errors).isEmpty()
 
+  addError: (args...) ->
+    if args.length < 2 then (@errors.base ?= []).push args[0]
+    else (@errors[args[0]] ?= []).push args[1]
+
   attributes: ->
     attrs = {}
     attrs[name] = value for own name, value of @ when not attributeRe.test name

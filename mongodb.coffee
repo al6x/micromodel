@@ -27,8 +27,9 @@ Db::clear = (callback) ->
 # Synchronising.
 sync MongoClient, 'connect'
 sync Db::, 'collection', 'clear', 'eval'
-sync Collection::, 'insert', 'findOne', 'count', 'remove', 'update', 'ensureIndex', 'indexes', 'drop'
-sync Cursor::, 'toArray', 'count'
+sync Collection::, 'insert', 'findOne', 'count', 'remove', 'update', 'ensureIndex', 'indexes' \
+, 'drop', 'aggregate'
+sync Cursor::, 'toArray', 'count', 'nextObject'
 
 # MongoDB persistence for Model.
 module.exports.ModelPersistence = (Model) ->
@@ -56,8 +57,16 @@ module.exports.ModelPersistence = (Model) ->
     data = @collection().findOne(selector, options)
     if data then new @ data else null
 
+  Model.firstRequired = (selector = {}, options = {}) ->
+    @first(selector, options) || (throw new Error("no '#{@name}' for '#{selector}' query!"))
+
+  Model.exist = (selector = {}) -> !!@first(selector, {_id: 1})
+
   Model.all = (selector = {}, options = {}) ->
     @collection().find(selector, options).toArray().map (o) => new @(o)
+
+  Model.find = (selector = {}, options = {}) ->
+    @collection().find(selector, options)
 
   Model.count = (selector = {}, options = {}) -> @collection().count(selector, options)
 

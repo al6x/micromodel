@@ -1,7 +1,7 @@
 {
   "name"         : "micromodel",
   "main"         : "./model",
-  "version"      : "2.1.0",
+  "version"      : "2.1.1",
   "homepage"     : "http://alexeypetrushin.github.com/micromodel",
   "dependencies" : {
     "mongodb"    : "1.2.x",

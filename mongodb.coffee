@@ -28,8 +28,17 @@ Db::clear = (callback) ->
 sync MongoClient, 'connect'
 sync Db::, 'collection', 'clear', 'eval'
 sync Collection::, 'insert', 'findOne', 'count', 'remove', 'update', 'ensureIndex', 'indexes' \
-, 'drop', 'aggregate'
-sync Cursor::, 'toArray', 'count', 'nextObject'
+, 'drop', 'aggregate', 'findAndModify'
+
+# Mongo dynamically creates cursor, wrapping it.
+syncCursor = (obj) ->
+  sync obj, 'toArray', 'count', 'nextObject'
+syncCursor Cursor::
+Collection::findWithoutSynchronizedCursor = Collection::find
+Collection::find = ->
+  cursor = @findWithoutSynchronizedCursor.apply @, arguments
+  syncCursor cursor
+  cursor
 
 # MongoDB persistence for Model.
 module.exports.ModelPersistence = (Model) ->
